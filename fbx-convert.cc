@@ -2,9 +2,13 @@
 #include <vector>
 
 #include <err.h>
+#include <errno.h>
 #include <getopt.h>
 #include <math.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sysexits.h>
+#include <unistd.h>
 
 #include <fbxsdk.h>
 #include <fbxsdk/utils/fbxutilities.h>
@@ -457,11 +461,31 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
           for (lTextureIndex = 0; lTextureIndex < lNbTex; lTextureIndex++)
             {
               FbxFileTexture *lFileTexture;
+              const char *inputPath, *baseName;
+              char *outputPath;
 
               if (!(lFileTexture = FbxCast<FbxFileTexture>(lProperty.GetSrcObject(FbxTexture::ClassId, lTextureIndex))))
                 continue;
 
-              printf ("texture %s\n", (const char *) lFileTexture->GetFileName ());
+              inputPath = (const char *) lFileTexture->GetFileName ();
+
+              if (0 != (baseName = strrchr (inputPath, '/')))
+                ++baseName;
+              else
+                baseName = inputPath;
+
+              if (-1 == asprintf (&outputPath, "Textures/%s", baseName))
+                err (EXIT_FAILURE, "asprintf failed");
+
+              if (-1 == mkdir ("Textures", 0777) && errno != EEXIST)
+                err (EXIT_FAILURE, "Failed to create directory `Textures'");
+
+              if (-1 == link (inputPath, outputPath))
+                err (EXIT_FAILURE, "Failed to link `%s' to `%s'", inputPath, outputPath);
+
+              printf ("texture %s\n", outputPath);
+
+              free (outputPath);
             }
         }
     }

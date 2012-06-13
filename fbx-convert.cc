@@ -2,13 +2,22 @@
 #include <vector>
 
 #include <err.h>
+#include <getopt.h>
 #include <math.h>
+#include <sysexits.h>
 
 #include <fbxsdk.h>
 #include <fbxsdk/utils/fbxutilities.h>
 
-/* KFbxTakeInfo* lCurrentTakeInfo = scene->GetTakeInfo(*(takeNames[pItem])); */
-/* scene->SetCurrentTake(takeNames[pItem]->Buffer()); */
+static int FbxConvert_printHelp;
+static int FbxConvert_printVersion;
+
+static struct option FbxConvert_longOptions[] =
+{
+    { "help",     no_argument, &FbxConvert_printHelp, 1 },
+    { "version",  no_argument, &FbxConvert_printVersion, 1 },
+    { 0, 0, 0, 0 }
+};
 
 static void
 PreparePointCacheData(KFbxScene* pScene);
@@ -60,10 +69,35 @@ main(int argc, char** argv)
 
   FbxArray<KString*> takeNames;
 
-  if(argc <= 1)
-    *gFileName = "humanoid.fbx";
-  else
-    *gFileName = argv[1];
+  while(-1 != (i = getopt_long(argc, argv, "", FbxConvert_longOptions, NULL)))
+    {
+      switch(i)
+        {
+        case '?':
+
+          fprintf(stderr, "Try `%s --help' for more information.\n", argv[0]);
+
+          return EXIT_FAILURE;
+        }
+    }
+
+  if(FbxConvert_printHelp)
+    {
+      fprintf(stdout,
+              "Usage: %s [OPTION]... FILENAME\n"
+              "\n"
+              "      --help     display this help and exit\n"
+              "      --version  display version information\n"
+              "\n"
+              "Report bugs to <morten.hustveit@gmail.com>\n", argv[0]);
+
+      return EXIT_SUCCESS;
+    }
+
+  if (optind + 1 != argc)
+    errx (EX_USAGE, "Usage: %s [OPTION]... FILENAME", argv[0]);
+
+  *gFileName = argv[optind];
 
   // The first thing to do is to create the FBX SDK manager which is the
   // object allocator for almost all the classes in the SDK.

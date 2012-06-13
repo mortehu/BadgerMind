@@ -12,10 +12,6 @@
 #include <unistd.h>
 #include <getopt.h>
 
-static int WatchSubdirs_printHelp;
-static int WatchSubdirs_printVersion;
-static const char *WatchSubdirs_makefile = "Makefile";
-
 static pthread_mutex_t build_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t build_cond = PTHREAD_COND_INITIALIZER;
 static uint64_t dirtyPaths; /* XXX: Supports max 64 paths */
@@ -24,6 +20,18 @@ static char **paths;
 static int pathCount;
 
 extern char **environ;
+
+static int WatchSubdirs_printHelp;
+static int WatchSubdirs_printVersion;
+static const char *WatchSubdirs_makefile = "Makefile";
+
+static struct option WatchSubdirs_longOptions[] =
+{
+    { "makefile", required_argument, 0, 'm' },
+    { "help",     no_argument, &WatchSubdirs_printHelp, 1 },
+    { "version",  no_argument, &WatchSubdirs_printVersion, 1 },
+    { 0, 0, 0, 0 }
+};
 
 static void *
 WatchSubdirs_BuildThread (void *arg)
@@ -85,14 +93,6 @@ WatchSubdirs_StartBuildThread (void)
   pthread_detach (threadHandle);
 }
 
-static struct option long_options[] =
-{
-    { "makefile", required_argument, 0, 'm' },
-    { "help",     no_argument, &WatchSubdirs_printHelp, 1 },
-    { "version",  no_argument, &WatchSubdirs_printVersion, 1 },
-    { 0, 0, 0, 0 }
-};
-
 int
 main (int argc, char **argv)
 {
@@ -106,7 +106,7 @@ main (int argc, char **argv)
   if (-1 == (inotifyFD = inotify_init1(IN_CLOEXEC)))
     err (EXIT_FAILURE, "inotify_init1 failed");
 
-  while(-1 != (i = getopt_long(argc, argv, "", long_options, NULL)))
+  while(-1 != (i = getopt_long(argc, argv, "", WatchSubdirs_longOptions, NULL)))
     {
       switch(i)
         {

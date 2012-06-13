@@ -10,6 +10,8 @@
 #include <sysexits.h>
 #include <unistd.h>
 
+#define FBXSDK_NEW_API
+
 #include <fbxsdk.h>
 #include <fbxsdk/utils/fbxutilities.h>
 
@@ -24,24 +26,24 @@ static struct option FbxConvert_longOptions[] =
 };
 
 static void
-PreparePointCacheData(KFbxScene* pScene);
+PreparePointCacheData(FbxScene* pScene);
 
 static void
-ExportMeshScene(KFbxScene* pScene);
+ExportMeshScene(FbxScene* pScene);
 
 static void
-ExportAnimScene(KFbxScene* pScene, KTime& time);
+ExportAnimScene(FbxScene* pScene, FbxTime& time);
 
-static KFbxXMatrix
-GetGeometry(KFbxNode* node);
+static FbxAMatrix
+GetGeometry(FbxNode* node);
 
 static void
-ConvertNurbsAndPatchRecursive(KFbxSdkManager* pSdkManager,
-                              KFbxNode* node);
+ConvertNurbsAndPatchRecursive(FbxManager* pSdkManager,
+                              FbxNode* node);
 
 struct vertex
 {
-  float x, y, z;
+  unsigned int controlPoint;
   float u, v;
 
   bool
@@ -49,9 +51,7 @@ struct vertex
     {
 #define TEST(a) if (a != rhs.a) return a < rhs.a;
 
-      TEST(x)
-      TEST(y)
-      TEST(z)
+      TEST(controlPoint)
       TEST(u)
 
 #undef TEST
@@ -65,13 +65,13 @@ main(int argc, char** argv)
 {
   int i;
   int lFileFormat = -1;
-  KString *gFileName = new KString;
+  FbxString *gFileName = new FbxString;
 
-  KFbxSdkManager* fbxSDKManager;
-  KFbxImporter* fbxImporter;
-  KFbxScene* scene;
+  FbxManager* FbxManager;
+  FbxImporter* fbxImporter;
+  FbxScene* scene;
 
-  FbxArray<KString*> takeNames;
+  FbxArray<FbxString*> takeNames;
 
   while(-1 != (i = getopt_long(argc, argv, "", FbxConvert_longOptions, NULL)))
     {
@@ -105,25 +105,25 @@ main(int argc, char** argv)
 
   // The first thing to do is to create the FBX SDK manager which is the
   // object allocator for almost all the classes in the SDK.
-  if (!(fbxSDKManager = KFbxSdkManager::Create()))
+  if (!(FbxManager = FbxManager::Create()))
     errx (EXIT_FAILURE, "Unable to create the FBX SDK manager");
 
   // Load plugins from the executable directory
-  KString lPath = FbxGetApplicationDirectory();
-  KString lExtension = "so";
+  FbxString lPath = FbxGetApplicationDirectory();
+  FbxString lExtension = "so";
 
-  fbxSDKManager->LoadPluginsDirectory(lPath.Buffer(), lExtension.Buffer());
+  FbxManager->LoadPluginsDirectory(lPath.Buffer(), lExtension.Buffer());
 
   // Create the entity that will hold the scene.
-  scene = FbxScene::Create(fbxSDKManager, "");
+  scene = FbxScene::Create(FbxManager, "");
 
-  if (!fbxSDKManager)
+  if (!FbxManager)
     fprintf (stderr, "Unable to create the FBX SDK manager\n");
 
-  fbxImporter = KFbxImporter::Create(fbxSDKManager, "");
+  fbxImporter = FbxImporter::Create(FbxManager, "");
 
-  if (!fbxSDKManager->GetIOPluginRegistry()->DetectReaderFileFormat(*gFileName, lFileFormat))
-    lFileFormat = fbxSDKManager->GetIOPluginRegistry()->FindReaderIDByDescription ("FBX binary (*.fbx)");;
+  if (!FbxManager->GetIOPluginRegistry()->DetectReaderFileFormat(*gFileName, lFileFormat))
+    lFileFormat = FbxManager->GetIOPluginRegistry()->FindReaderIDByDescription ("FBX binary (*.fbx)");;
 
   if(!fbxImporter->Initialize(gFileName->Buffer(), lFileFormat))
     errx (EXIT_FAILURE, "Unable to open `%s': %s", (const char *) *gFileName, (const char *) fbxImporter->GetLastErrorString ());
@@ -131,21 +131,17 @@ main(int argc, char** argv)
   if(!fbxImporter->Import(scene))
     errx (EXIT_FAILURE, "Unable to import `%s': %s", (const char *) *gFileName, (const char *) fbxImporter->GetLastErrorString ());
 
+  printf ("scale %.g\n", 100.0 / scene->GetGlobalSettings().GetSystemUnit().GetScaleFactor());
+
   // Convert Axis System to what is used in this example, if needed
-  KFbxAxisSystem OurAxisSystem (KFbxAxisSystem::eYAxis, FbxAxisSystem::eParityOdd, FbxAxisSystem::eRightHanded);
+  FbxAxisSystem OurAxisSystem (FbxAxisSystem::eYAxis, FbxAxisSystem::eParityOdd, FbxAxisSystem::eRightHanded);
 
   if (scene->GetGlobalSettings().GetAxisSystem() != OurAxisSystem)
     OurAxisSystem.ConvertScene(scene);
 
-  if (scene->GetGlobalSettings().GetSystemUnit().GetScaleFactor() != 100.0)
-    {
-      FbxSystemUnit OurSystemUnit(100.0);
-      OurSystemUnit.ConvertScene(scene);
-    }
-
   // Nurbs and patch attribute types are not supported yet.
   // Convert them into mesh node attributes to have them drawn.
-  ConvertNurbsAndPatchRecursive(fbxSDKManager, scene->GetRootNode());
+  ConvertNurbsAndPatchRecursive(FbxManager, scene->GetRootNode());
 
   // Convert any .PC2 point cache data into the .MC format for
   // vertex cache deformer playback.
@@ -160,7 +156,7 @@ main(int argc, char** argv)
   for (i = 0; i < takeNames.GetCount(); i++)
     {
       FbxTakeInfo* lCurrentTakeInfo;
-      KTime period, start, stop, currentTime;
+      FbxTime period, start, stop, currentTime;
 
       FbxAnimStack *lCurrentAnimationStack;
 
@@ -197,16 +193,16 @@ main(int argc, char** argv)
 }
 
 static void
-ConvertNurbsAndPatchRecursive(KFbxSdkManager* pSdkManager, KFbxNode* node)
+ConvertNurbsAndPatchRecursive(FbxManager* pSdkManager, FbxNode* node)
 {
-  KFbxNodeAttribute* lNodeAttribute;
+  FbxNodeAttribute* lNodeAttribute;
   int i, count;
 
   lNodeAttribute = node->GetNodeAttribute();
 
   if (lNodeAttribute
-      && (lNodeAttribute->GetAttributeType() == KFbxNodeAttribute::eNurbs
-          || lNodeAttribute->GetAttributeType() == KFbxNodeAttribute::ePatch))
+      && (lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eNurbs
+          || lNodeAttribute->GetAttributeType() == FbxNodeAttribute::ePatch))
     {
       FbxGeometryConverter lConverter(pSdkManager);
 
@@ -244,14 +240,14 @@ PreparePointCacheData(FbxScene* pScene)
 
           for (i = 0; i < lVertexCacheDeformerCount; ++i)
             {
-              KFbxVertexCacheDeformer* lDeformer;
+              FbxVertexCacheDeformer* lDeformer;
 
-              lDeformer = static_cast<KFbxVertexCacheDeformer*>(lNode->GetGeometry()->GetDeformer(i, KFbxDeformer::eVertexCache));
+              lDeformer = static_cast<FbxVertexCacheDeformer*>(lNode->GetGeometry()->GetDeformer(i, FbxDeformer::eVertexCache));
 
               if(!lDeformer)
                 continue;
 
-              KFbxCache* lCache = lDeformer->GetCache();
+              FbxCache* lCache = lDeformer->GetCache();
 
               if(!lCache)
                 continue;
@@ -260,12 +256,12 @@ PreparePointCacheData(FbxScene* pScene)
               if (!lDeformer->IsActive())
                 continue;
 
-              if (lCache->GetCacheFileFormat() == KFbxCache::eMayaCache)
+              if (lCache->GetCacheFileFormat() == FbxCache::eMayaCache)
                 {
-                  if (!lCache->ConvertFromMCToPC2(KTime::GetFrameRate(pScene->GetGlobalSettings().GetTimeMode()), 0))
+                  if (!lCache->ConvertFromMCToPC2(FbxTime::GetFrameRate(pScene->GetGlobalSettings().GetTimeMode()), 0))
                     {
                       // Conversion failed, retrieve the error here
-                      KString lTheErrorIs = lCache->GetError().GetLastErrorString();
+                      FbxString lTheErrorIs = lCache->GetError().GetLastErrorString();
                     }
                 }
 
@@ -273,7 +269,7 @@ PreparePointCacheData(FbxScene* pScene)
               if (!lCache->OpenFileForRead())
                 {
                   // Cannot open file
-                  KString lTheErrorIs = lCache->GetError().GetLastErrorString();
+                  FbxString lTheErrorIs = lCache->GetError().GetLastErrorString();
 
                   // Set the deformer inactive so we don't play it back
                   lDeformer->SetActive(false);
@@ -285,15 +281,14 @@ PreparePointCacheData(FbxScene* pScene)
 
 // Get the geometry deformation local to a node. It is never inherited by the
 // children.
-KFbxXMatrix GetGeometry(KFbxNode* node)
+static FbxAMatrix
+GetGeometry(FbxNode* node)
 {
-  KFbxXMatrix lGeometry;
+  const FbxVector4 T = node->GetGeometricTranslation(FbxNode::eSourcePivot);
+  const FbxVector4 R = node->GetGeometricRotation(FbxNode::eSourcePivot);
+  const FbxVector4 S = node->GetGeometricScaling(FbxNode::eSourcePivot);
 
-  lGeometry.SetT(node->GetGeometricTranslation(KFbxNode::eSourcePivot));
-  lGeometry.SetR(node->GetGeometricRotation(KFbxNode::eSourcePivot));
-  lGeometry.SetS(node->GetGeometricScaling(KFbxNode::eSourcePivot));
-
-  return lGeometry;
+  return FbxAMatrix(T, R, S);
 }
 
 struct VertexWeights
@@ -328,93 +323,104 @@ struct VertexWeights
 };
 
 static void
-ExportClusterDeformation(KFbxXMatrix& pGlobalPosition,
-                         KFbxMesh* pMesh)
+PrintMatrix (const char *name, int index, const FbxAMatrix& matrix)
 {
-    KFbxCluster::ELinkMode lClusterMode = ((KFbxSkin*)pMesh->GetDeformer(0, KFbxDeformer::eSkin))->GetCluster(0)->GetLinkMode();
+  int k;
 
-    int i, j;
-    int lClusterCount=0;
-    int lVertexCount = pMesh->GetControlPointsCount();
-    int lSkinCount=pMesh->GetDeformerCount(KFbxDeformer::eSkin);
+  printf ("%s %d", name, index);
 
-    VertexWeights *weights;
+  for (k = 0; k < 16; ++k)
+    printf (" %.6g", matrix.Get (k / 4, k % 4));
 
-    weights = new VertexWeights[lVertexCount];
-
-    for(i=0; i<lSkinCount; ++i)
-      {
-        lClusterCount = ((KFbxSkin *)pMesh->GetDeformer(i, KFbxDeformer::eSkin))->GetClusterCount();
-
-        for (j=0; j<lClusterCount; ++j)
-          {
-            KFbxCluster* lCluster = ((KFbxSkin *) pMesh->GetDeformer(i, KFbxDeformer::eSkin))->GetCluster(j);
-            int k;
-
-            if (!lCluster->GetLink())
-              continue;
-
-            KFbxXMatrix lReferenceGlobalInitPosition;
-            KFbxXMatrix lClusterGlobalInitPosition;
-            KFbxXMatrix lReferenceGeometry;
-            KFbxXMatrix lClusterGeometry;
-
-            KFbxXMatrix lClusterRelativeInitPosition;
-            KFbxXMatrix lVertexTransformMatrix;
-
-            if (lClusterMode == FbxCluster::eAdditive && lCluster->GetAssociateModel())
-              {
-                lCluster->GetTransformAssociateModelMatrix(lReferenceGlobalInitPosition);
-              }
-            else
-              {
-                lCluster->GetTransformMatrix(lReferenceGlobalInitPosition);
-
-                lReferenceGeometry = GetGeometry(pMesh->GetNode());
-                lReferenceGlobalInitPosition *= lReferenceGeometry;
-              }
-
-            lCluster->GetTransformLinkMatrix(lClusterGlobalInitPosition);
-
-            lClusterRelativeInitPosition = lClusterGlobalInitPosition.Inverse() * lReferenceGlobalInitPosition;
-
-            printf ("bone-matrix %d", j);
-
-            for (k = 0; k < 16; ++k)
-              printf (" %.6g", lClusterRelativeInitPosition.Get (k / 4, k % 4));
-
-            printf ("\n");
-
-            int lVertexIndexCount = lCluster->GetControlPointIndicesCount();
-
-            for (k = 0; k < lVertexIndexCount; ++k)
-              {
-                int lIndex = lCluster->GetControlPointIndices()[k];
-                double lWeight = lCluster->GetControlPointWeights()[k];
-
-                if (lWeight == 0.0)
-                  continue;
-
-                weights[lIndex].AddWeight (lWeight, j);
-              }
-          }
-      }
-
-    for (i = 0; i < lVertexCount; i++)
-      {
-        printf ("bone-weights %d %.6g %.6g %.6g %.6g %u %u %u %u\n",
-                i,
-                weights[i].weights[0], weights[i].weights[1], weights[i].weights[2], weights[i].weights[3],
-                weights[i].bones[0], weights[i].bones[1], weights[i].bones[2], weights[i].bones[3]);
-      }
-
-    delete [] weights;
+  printf ("\n");
 }
 
 static void
-ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
+ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
+                         FbxMesh* pMesh,
+                         const std::vector<vertex> &vertexArray)
 {
-  KFbxMesh* mesh;
+  FbxCluster::ELinkMode lClusterMode = ((FbxSkin*)pMesh->GetDeformer(0, FbxDeformer::eSkin))->GetCluster(0)->GetLinkMode();
+
+  int i, j;
+  int lClusterCount=0;
+  int lVertexCount = pMesh->GetControlPointsCount();
+  int lSkinCount=pMesh->GetDeformerCount(FbxDeformer::eSkin);
+
+  VertexWeights *weights;
+
+  weights = new VertexWeights[lVertexCount];
+
+  for(i=0; i<lSkinCount; ++i)
+    {
+      lClusterCount = ((FbxSkin *)pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetClusterCount();
+
+      for (j=0; j<lClusterCount; ++j)
+        {
+          FbxCluster* lCluster = ((FbxSkin *) pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetCluster(j);
+          int k;
+
+          if (!lCluster->GetLink())
+            continue;
+
+          FbxAMatrix lReferenceGlobalInitPosition;
+          FbxAMatrix lClusterGlobalInitPosition;
+          FbxAMatrix lClusterGeometry;
+
+          FbxAMatrix lClusterRelativeInitPosition;
+          FbxAMatrix lVertexTransformMatrix;
+
+          if (lClusterMode == FbxCluster::eAdditive && lCluster->GetAssociateModel())
+            {
+              lCluster->GetTransformAssociateModelMatrix(lReferenceGlobalInitPosition);
+            }
+          else
+            {
+              lCluster->GetTransformMatrix(lReferenceGlobalInitPosition);
+
+              lReferenceGlobalInitPosition *= GetGeometry(pMesh->GetNode());
+            }
+
+          lCluster->GetTransformLinkMatrix(lClusterGlobalInitPosition);
+
+          lClusterRelativeInitPosition = lClusterGlobalInitPosition.Inverse() * lReferenceGlobalInitPosition;
+
+          PrintMatrix ("bone-matrix", j, lClusterRelativeInitPosition);
+
+          int lVertexIndexCount = lCluster->GetControlPointIndicesCount();
+
+          for (k = 0; k < lVertexIndexCount; ++k)
+            {
+              int lIndex = lCluster->GetControlPointIndices()[k];
+              double lWeight = lCluster->GetControlPointWeights()[k];
+
+              if (lWeight == 0.0)
+                continue;
+
+              weights[lIndex].AddWeight (lWeight, j);
+            }
+        }
+    }
+
+  for (i = 0; i < vertexArray.size (); i++)
+  {
+    unsigned int controlPoint;
+
+    controlPoint = vertexArray[i].controlPoint;
+
+    printf ("bone-weights %d %.6g %.6g %.6g %.6g %u %u %u %u\n",
+        i,
+        weights[controlPoint].weights[0], weights[controlPoint].weights[1], weights[controlPoint].weights[2], weights[controlPoint].weights[3],
+        weights[controlPoint].bones[0], weights[controlPoint].bones[1], weights[controlPoint].bones[2], weights[controlPoint].bones[3]);
+  }
+
+  delete [] weights;
+}
+
+static void
+ExportMesh(FbxNode* node, FbxAMatrix& pGlobalPosition)
+{
+  FbxMesh* mesh;
   int lClusterCount = 0;
   int lSkinCount = 0;
   int lVertexCount;
@@ -429,10 +435,10 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
   if (!lVertexCount)
     return;
 
-  lSkinCount = mesh->GetDeformerCount(KFbxDeformer::eSkin);
+  lSkinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
 
   for (int i = 0; i < lSkinCount; i++)
-    lClusterCount += ((KFbxSkin *)(mesh->GetDeformer(i, KFbxDeformer::eSkin)))->GetClusterCount();
+    lClusterCount += ((FbxSkin *)(mesh->GetDeformer(i, FbxDeformer::eSkin)))->GetClusterCount();
 
   printf ("begin-mesh\n");
 
@@ -480,6 +486,9 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
               if (-1 == mkdir ("Textures", 0777) && errno != EEXIST)
                 err (EXIT_FAILURE, "Failed to create directory `Textures'");
 
+              if (-1 == unlink (outputPath) && errno != ENOENT)
+                err (EXIT_FAILURE, "Failed to unlink `%s'", outputPath);
+
               if (-1 == link (inputPath, outputPath))
                 err (EXIT_FAILURE, "Failed to link `%s' to `%s'", inputPath, outputPath);
 
@@ -494,9 +503,6 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
   for (i = 0; i < 16; ++i)
     printf (" %.6g", pGlobalPosition.Get (i / 4, i % 4));
   printf ("\n");
-
-  if (lClusterCount)
-    ExportClusterDeformation (pGlobalPosition, mesh);
 
   FbxStringList lUVNames;
   const char * lUVName;
@@ -521,14 +527,9 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
         {
           vertex newVertex;
 
-          double *xyz;
           FbxVector2 uv;
 
-          xyz = (double *) mesh->GetControlPoints()[mesh->GetPolygonVertex(i, j)];
-
-          newVertex.x = xyz[0];
-          newVertex.y = xyz[1];
-          newVertex.z = xyz[2];
+          newVertex.controlPoint = mesh->GetPolygonVertex(i, j);
 
           mesh->GetPolygonVertexUV (i, j, lUVName, uv);
 
@@ -557,12 +558,18 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
   for (i = 0; i < vertexArray.size (); ++i)
     {
       vertex v;
+      double *xyz;
 
       v = vertexArray[i];
 
-      printf ("xyz %d %.6g %.6g %.6g\n", i, v.x, v.y, v.z);
+      xyz = (double *) mesh->GetControlPoints()[v.controlPoint];
+
+      printf ("xyz %d %.6g %.6g %.6g\n", i, xyz[0], xyz[1], xyz[2]);
       printf ("uv %d %.6g %.6g\n", i, v.u, v.v);
     }
+
+  if (lClusterCount)
+    ExportClusterDeformation (pGlobalPosition, mesh, vertexArray);
 
   printf ("end-mesh\n");
 
@@ -570,22 +577,22 @@ ExportMesh(KFbxNode* node, KFbxXMatrix& pGlobalPosition)
 }
 
 static void
-ExportMeshRecursive(KFbxNode* node,
-                    KFbxXMatrix& pParentGlobalPosition)
+ExportMeshRecursive(FbxNode* node,
+                    FbxAMatrix& pParentGlobalPosition)
 {
-  KTime time;
+  FbxTime time;
 
   // Compute the node's global position.
-  KFbxXMatrix lGlobalPosition = node->EvaluateGlobalTransform(time);
+  FbxAMatrix lGlobalPosition = node->EvaluateGlobalTransform(time);
 
   // Geometry offset.
   // it is not inherited by the children.
-  KFbxXMatrix lGeometryOffset = GetGeometry(node);
-  KFbxXMatrix lGlobalOffPosition = lGlobalPosition * lGeometryOffset;
+  FbxAMatrix lGeometryOffset = GetGeometry(node);
+  FbxAMatrix lGlobalOffPosition = lGlobalPosition * lGeometryOffset;
 
-  KFbxNodeAttribute* lNodeAttribute = node->GetNodeAttribute();
+  FbxNodeAttribute* lNodeAttribute = node->GetNodeAttribute();
 
-  if (lNodeAttribute && lNodeAttribute->GetAttributeType() == KFbxNodeAttribute::eMesh)
+  if (lNodeAttribute && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
     ExportMesh(node, lGlobalPosition);
 
   int i, lCount = node->GetChildCount();
@@ -595,9 +602,9 @@ ExportMeshRecursive(KFbxNode* node,
 }
 
 static void
-ExportMeshScene(KFbxScene* pScene)
+ExportMeshScene(FbxScene* pScene)
 {
-  KFbxXMatrix lDummyGlobalPosition;
+  FbxAMatrix lDummyGlobalPosition;
 
   int i, lCount = pScene->GetRootNode()->GetChildCount();
 
@@ -605,14 +612,14 @@ ExportMeshScene(KFbxScene* pScene)
     ExportMeshRecursive(pScene->GetRootNode()->GetChild(i), lDummyGlobalPosition);
 }
 
-static void ExportClusterDeformation(KFbxXMatrix& pGlobalPosition,
-                              KFbxMesh* pMesh,
-                              KTime& time)
+static void ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
+                              FbxMesh* pMesh,
+                              FbxTime& time)
 {
-  KFbxCluster::ELinkMode lClusterMode;
-  KFbxSkin *skin;
+  FbxCluster::ELinkMode lClusterMode;
+  FbxSkin *skin;
 
-  skin = (KFbxSkin *) pMesh->GetDeformer(0, KFbxDeformer::eSkin);
+  skin = (FbxSkin *) pMesh->GetDeformer(0, FbxDeformer::eSkin);
 
   if (!skin)
     return;
@@ -622,48 +629,45 @@ static void ExportClusterDeformation(KFbxXMatrix& pGlobalPosition,
   int i, j;
   int lClusterCount=0;
   int lVertexCount = pMesh->GetControlPointsCount();
-  int lSkinCount=pMesh->GetDeformerCount(KFbxDeformer::eSkin);
+  int lSkinCount=pMesh->GetDeformerCount(FbxDeformer::eSkin);
 
   if (!lVertexCount)
     return;
 
   for(i=0; i<lSkinCount; ++i)
     {
-      lClusterCount =( (KFbxSkin *)pMesh->GetDeformer(i, KFbxDeformer::eSkin))->GetClusterCount();
+      lClusterCount =( (FbxSkin *)pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetClusterCount();
 
       for (j=0; j<lClusterCount; ++j)
         {
-          KFbxCluster* lCluster =((KFbxSkin *) pMesh->GetDeformer(i, KFbxDeformer::eSkin))->GetCluster(j);
-          int k;
+          FbxCluster* lCluster =((FbxSkin *) pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetCluster(j);
 
           if (!lCluster->GetLink())
             continue;
 
-          KFbxXMatrix lReferenceGlobalCurrentPosition;
-          KFbxXMatrix lClusterGlobalInitPosition;
-          KFbxXMatrix lClusterGlobalCurrentPosition;
-          KFbxXMatrix lReferenceGeometry;
-          KFbxXMatrix lClusterGeometry;
+          FbxAMatrix lReferenceGlobalCurrentPosition;
+          FbxAMatrix lClusterGlobalInitPosition;
+          FbxAMatrix lClusterGlobalCurrentPosition;
+          FbxAMatrix lClusterGeometry;
 
-          KFbxXMatrix lClusterRelativeInitPosition;
-          KFbxXMatrix lClusterRelativeCurrentPositionInverse;
-          KFbxXMatrix lVertexTransformMatrix;
+          FbxAMatrix lClusterRelativeInitPosition;
+          FbxAMatrix lClusterRelativeCurrentPositionInverse;
+          FbxAMatrix lVertexTransformMatrix;
 
           if (lClusterMode == FbxCluster::eAdditive && lCluster->GetAssociateModel())
             {
               lReferenceGlobalCurrentPosition = lCluster->GetAssociateModel()->EvaluateGlobalTransform(time);
 
-              // Geometric transform of the model
-              lReferenceGeometry = GetGeometry(lCluster->GetAssociateModel());
-              lReferenceGlobalCurrentPosition *= lReferenceGeometry;
+              lReferenceGlobalCurrentPosition *= GetGeometry(lCluster->GetAssociateModel());
             }
           else
-            lReferenceGlobalCurrentPosition = pGlobalPosition;
+            {
+              lReferenceGlobalCurrentPosition = pGlobalPosition;
+            }
 
 
           lClusterGlobalCurrentPosition = lCluster->GetLink()->EvaluateGlobalTransform(time);
 
-          // Compute the current position of the link relative to the reference.
           lClusterRelativeCurrentPositionInverse = lReferenceGlobalCurrentPosition.Inverse() * lClusterGlobalCurrentPosition;
 
 #if 0
@@ -671,23 +675,18 @@ static void ExportClusterDeformation(KFbxXMatrix& pGlobalPosition,
           lVertexTransformMatrix = lClusterRelativeCurrentPositionInverse * lClusterRelativeInitPosition;
 #endif
 
-          printf ("bone-matrix %d", j);
-
-          for (k = 0; k < 16; ++k)
-            printf (" %.6g", lClusterRelativeCurrentPositionInverse.Get (k / 4, k % 4));
-
-          printf ("\n");
+          PrintMatrix ("bone-matrix", j, lClusterRelativeCurrentPositionInverse);
         }
     }
 }
 
 static void
-ExportAnimRecursive(KFbxNode* node,
-                    KTime& time,
-                    KFbxXMatrix& pParentGlobalPosition)
+ExportAnimRecursive(FbxNode* node,
+                    FbxTime& time,
+                    FbxAMatrix& pParentGlobalPosition)
 {
-  KFbxXMatrix lGlobalPosition, lGeometryOffset, lGlobalOffPosition;
-  KFbxNodeAttribute* lNodeAttribute;
+  FbxAMatrix lGlobalPosition, lGeometryOffset, lGlobalOffPosition;
+  FbxNodeAttribute* lNodeAttribute;
   int i, count;
 
   lGlobalPosition = node->EvaluateGlobalTransform(time);
@@ -697,9 +696,9 @@ ExportAnimRecursive(KFbxNode* node,
   lNodeAttribute = node->GetNodeAttribute();
 
   if (lNodeAttribute
-      && lNodeAttribute->GetAttributeType() == KFbxNodeAttribute::eMesh)
+      && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
     {
-      ExportClusterDeformation (lGlobalPosition, (KFbxMesh *) node->GetNodeAttribute(), time);
+      ExportClusterDeformation (lGlobalPosition, (FbxMesh *) node->GetNodeAttribute(), time);
     }
 
   count = node->GetChildCount();
@@ -709,9 +708,9 @@ ExportAnimRecursive(KFbxNode* node,
 }
 
 static void
-ExportAnimScene(KFbxScene* pScene, KTime& time)
+ExportAnimScene(FbxScene* pScene, FbxTime& time)
 {
-  KFbxXMatrix lDummyGlobalPosition;
+  FbxAMatrix lDummyGlobalPosition;
 
   int i, lCount = pScene->GetRootNode()->GetChildCount();
 

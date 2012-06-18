@@ -29,7 +29,8 @@ static void
 PreparePointCacheData(FbxScene* pScene);
 
 static void
-ExportMeshScene(FbxScene* pScene);
+ExportMeshRecursive(FbxNode* node,
+                    FbxAMatrix& pParentGlobalPosition);
 
 static void
 ExportAnimScene(FbxScene* pScene, FbxTime& time);
@@ -131,10 +132,11 @@ main(int argc, char** argv)
   if(!fbxImporter->Import(scene))
     errx (EXIT_FAILURE, "Unable to import `%s': %s", (const char *) *gFileName, (const char *) fbxImporter->GetLastErrorString ());
 
-  printf ("scale %.g\n", 100.0 / scene->GetGlobalSettings().GetSystemUnit().GetScaleFactor());
-
   // Convert Axis System to what is used in this example, if needed
   FbxAxisSystem OurAxisSystem (FbxAxisSystem::eYAxis, FbxAxisSystem::eParityOdd, FbxAxisSystem::eRightHanded);
+
+  if (scene->GetGlobalSettings().GetSystemUnit().GetScaleFactor() != 100.0)
+    FbxSystemUnit (100.0).ConvertScene (scene);
 
   if (scene->GetGlobalSettings().GetAxisSystem() != OurAxisSystem)
     OurAxisSystem.ConvertScene(scene);
@@ -151,7 +153,14 @@ main(int argc, char** argv)
 
   fbxImporter->Destroy();
 
-  ExportMeshScene (scene);
+  {
+    FbxAMatrix lDummyGlobalPosition;
+
+    int i, lCount = scene->GetRootNode()->GetChildCount();
+
+    for (i = 0; i < lCount; i++)
+      ExportMeshRecursive(scene->GetRootNode()->GetChild(i), lDummyGlobalPosition);
+  }
 
   for (i = 0; i < takeNames.GetCount(); i++)
     {
@@ -323,13 +332,32 @@ struct VertexWeights
 };
 
 static void
+PrintTransf (const char *name, int index, const FbxAMatrix& matrix)
+{
+  FbxQuaternion quat;
+  FbxVector4 transl;
+
+  transl = matrix.GetT ();
+  quat = matrix.GetQ ();
+
+  printf ("%s %d  %.6g %.6g %.6g %.6g  %.6g %.6g %.6g ", name, index,
+          quat[0], quat[1], quat[2], quat[3],
+          transl[0], transl[1], transl[2]);
+
+  printf ("\n");
+}
+
+static void
 PrintMatrix (const char *name, int index, const FbxAMatrix& matrix)
 {
   int k;
 
   printf ("%s %d", name, index);
 
-  for (k = 0; k < 16; ++k)
+  for (k = 0; k < 12; ++k)
+    printf (" %.6g", matrix.Get (k / 4, k % 4));
+
+  for (; k < 16; ++k)
     printf (" %.6g", matrix.Get (k / 4, k % 4));
 
   printf ("\n");
@@ -418,7 +446,7 @@ ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
 }
 
 static void
-ExportMesh(FbxNode* node, FbxAMatrix& pGlobalPosition)
+ExportMesh (FbxNode* node, FbxAMatrix& pGlobalPosition)
 {
   FbxMesh* mesh;
   int lClusterCount = 0;
@@ -577,8 +605,8 @@ ExportMesh(FbxNode* node, FbxAMatrix& pGlobalPosition)
 }
 
 static void
-ExportMeshRecursive(FbxNode* node,
-                    FbxAMatrix& pParentGlobalPosition)
+ExportMeshRecursive (FbxNode* node,
+                     FbxAMatrix& pParentGlobalPosition)
 {
   FbxTime time;
 
@@ -593,23 +621,12 @@ ExportMeshRecursive(FbxNode* node,
   FbxNodeAttribute* lNodeAttribute = node->GetNodeAttribute();
 
   if (lNodeAttribute && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
-    ExportMesh(node, lGlobalPosition);
+    ExportMesh (node, lGlobalPosition);
 
   int i, lCount = node->GetChildCount();
 
   for (i = 0; i < lCount; i++)
     ExportMeshRecursive(node->GetChild(i), lGlobalPosition);
-}
-
-static void
-ExportMeshScene(FbxScene* pScene)
-{
-  FbxAMatrix lDummyGlobalPosition;
-
-  int i, lCount = pScene->GetRootNode()->GetChildCount();
-
-  for (i = 0; i < lCount; i++)
-    ExportMeshRecursive(pScene->GetRootNode()->GetChild(i), lDummyGlobalPosition);
 }
 
 static void ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
@@ -670,12 +687,7 @@ static void ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
 
           lClusterRelativeCurrentPositionInverse = lReferenceGlobalCurrentPosition.Inverse() * lClusterGlobalCurrentPosition;
 
-#if 0
-          // Compute the shift of the link relative to the reference.
-          lVertexTransformMatrix = lClusterRelativeCurrentPositionInverse * lClusterRelativeInitPosition;
-#endif
-
-          PrintMatrix ("bone-matrix", j, lClusterRelativeCurrentPositionInverse);
+          PrintTransf ("bone-transf", j, lClusterRelativeCurrentPositionInverse);
         }
     }
 }

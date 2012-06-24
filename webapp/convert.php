@@ -20,6 +20,7 @@ if ($path[0] == '.' || preg_match('/\.php$/', $path) || preg_match('/\.\./', $pa
 $conversions =
   array('application/vnd.autodesk.fbx application/vnd.badgermind.m0' => '/usr/local/bin/bm-fbx-convert',
         'application/vnd.autodesk.fbx application/json' => '/usr/local/bin/bm-fbx-convert --format=json',
+        'application/vnd.autodesk.fbx text/html' => 'model-webgl-wrapper.php',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert',
         'application/vnd.badgermind.sd text/html' => '/usr/local/bin/bm-script-convert --format=html');
 
@@ -133,5 +134,8 @@ else
 {
   header("Content-Type: $best_format");
 
-  passthru("$best_handler " . escapeshellarg($path));
+  if ($best_handler[0] == '/')
+    passthru("$best_handler " . escapeshellarg($path));
+  else
+    require($best_handler);
 }

@@ -71,9 +71,8 @@ stringliteral(yyscan_t yyscanner)
 }
 
 int
-script_parse_file(const char *path)
+script_parse_file(struct script_parse_context *context, const char *path)
 {
-  struct script_parse_context context;
   YY_BUFFER_STATE buf;
   FILE* file;
   int result = -1;
@@ -81,30 +80,27 @@ script_parse_file(const char *path)
   if(!(file = fopen(path, "r")))
     return -1;
 
-  memset(&context, 0, sizeof(context));
+  memset(context, 0, sizeof(*context));
 
-  yylex_init(&context.scanner);
-  arena_init(&context.statement_arena);
+  yylex_init(&context->scanner);
+  arena_init(&context->statement_arena);
 
-  context.error = 0;
+  context->error = 0;
 
-  if(0 != (buf = yy_create_buffer(file, YY_BUF_SIZE, context.scanner)))
+  if(0 != (buf = yy_create_buffer(file, YY_BUF_SIZE, context->scanner)))
   {
     character = 1;
     line = 1;
 
-    yy_switch_to_buffer(buf, context.scanner);
-    yyset_extra(&context.statement_arena, context.scanner);
-    result = yyparse(&context);
-    yy_delete_buffer(buf, context.scanner);
+    yy_switch_to_buffer(buf, context->scanner);
+    yyset_extra(&context->statement_arena, context->scanner);
+    result = yyparse(context);
+    yy_delete_buffer(buf, context->scanner);
   }
 
   fclose(file);
 
-  script_dump (&context);
-
-  arena_free(&context.statement_arena);
-  yylex_destroy(context.scanner);
+  yylex_destroy(context->scanner);
 
   return result;
 }

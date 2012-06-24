@@ -37,9 +37,13 @@ enum ScriptExpressionType
   ScriptExpressionString,
   ScriptExpressionIdentifier,
   ScriptExpressionStatement,
+  ScriptExpressionParen,
 
   /* Binary */
-  ScriptExpressionAdd
+  ScriptExpressionAdd,
+  ScriptExpressionSubtract,
+  ScriptExpressionMultiply,
+  ScriptExpressionDivide,
 };
 
 struct ScriptExpression
@@ -61,7 +65,7 @@ struct ScriptExpression
 };
 
 int
-script_parse_file (const char *path);
+script_parse_file(struct script_parse_context *context, const char *path);
 
 void
 script_dump (struct script_parse_context *context);

@@ -19,7 +19,8 @@ if ($path[0] == '.' || preg_match('/\.php$/', $path) || preg_match('/\.\./', $pa
 
 $conversions =
   array('application/vnd.autodesk.fbx application/vnd.badgermind.m0' => '/usr/local/bin/bm-fbx-convert',
-        'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert');
+        'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert',
+        'application/vnd.badgermind.sd text/html' => '/usr/local/bin/bm-script-convert --format=html');
 
 if ($path[strlen($path) - 1] == '/')
   $path .= 'scene.bsd';
@@ -87,7 +88,7 @@ if (isset($_SERVER['HTTP_ACCEPT']) && sizeof($_SERVER['HTTP_ACCEPT']))
 
     if ($format == '*/*' || $format == $content_type)
     {
-      $best_format = $format;
+      $best_format = $content_type;
       $best_quality = $q;
       unset($best_handler);
     }
@@ -116,14 +117,14 @@ header("Last-Modified: " . strftime("%a, %d %b %Y %T %z", filemtime($path)));
 
 if (!isset($best_handler))
 {
-  header("Content-Type: $content_type");
+  header("Content-Type: $best_format");
   header("Content-Length: " . filesize($path));
 
   readfile($path);
 }
 else
 {
-  header("Content-Type: $content_type");
+  header("Content-Type: $best_format");
 
   passthru("$best_handler " . escapeshellarg($path));
 }

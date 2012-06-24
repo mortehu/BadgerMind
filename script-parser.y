@@ -41,6 +41,8 @@ yyerror(YYLTYPE *loc, struct script_parse_context *context, const char *message)
 %type<p> parameters parameter
 %type<p> expression
 
+%left '+' '-' '*' '/'
+
 %start document
 %%
 document
@@ -149,11 +151,46 @@ expression
         expr->lhs.statement = $1;
         $$ = expr;
       }
+    | '(' expression ')'
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionParen;
+        expr->lhs.expression = $2;
+        $$ = expr;
+      }
     | expression '+' expression
       {
         struct ScriptExpression *expr;
         ALLOC (expr);
         expr->type = ScriptExpressionAdd;
+        expr->lhs.expression = $1;
+        expr->rhs = $3;
+        $$ = expr;
+      }
+    | expression '-' expression
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionSubtract;
+        expr->lhs.expression = $1;
+        expr->rhs = $3;
+        $$ = expr;
+      }
+    | expression '*' expression
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionMultiply;
+        expr->lhs.expression = $1;
+        expr->rhs = $3;
+        $$ = expr;
+      }
+    | expression '/' expression
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionDivide;
         expr->lhs.expression = $1;
         expr->rhs = $3;
         $$ = expr;

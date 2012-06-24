@@ -6,8 +6,15 @@ enum ScriptVMExpressionType
   ScriptVMExpressionU32,
   ScriptVMExpressionFloat,
   ScriptVMExpressionString,
+  ScriptVMExpressionMat4x4,
+
+  ScriptVMExpressionParen,
   ScriptVMExpressionIdentifier,
   ScriptVMExpressionStatement,
-  ScriptVMExpressionAdd
+  ScriptVMExpressionAdd,
+  ScriptVMExpressionSubtract,
+  ScriptVMExpressionMultiply,
+  ScriptVMExpressionDivide
 };
+
 #endif /* !SCRIPT_VM_H_ */

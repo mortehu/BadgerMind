@@ -18,6 +18,8 @@ bm_script_convert_SOURCES = \
   arena.c arena.h \
   script-lexer.l \
   script-parser.y \
+  script-binary.c \
+  script-html.c \
   script.c
 
 clean-local:

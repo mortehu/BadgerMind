@@ -137,6 +137,7 @@ script_dump_expression (struct ScriptExpression *expression)
       script_dump_expression (expression->lhs.expression);
       script_dump_expression (expression->rhs);
 
+      expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionAdd);
       SCRIPT_EmitPointer (expression->lhs.statement->offset);
       SCRIPT_EmitPointer (expression->rhs->offset);
@@ -172,7 +173,12 @@ script_dump_statement (struct ScriptStatement *statement)
   SCRIPT_EmitByte (0);
 
   for (parameter = statement->parameters; parameter; parameter = parameter->next)
-    SCRIPT_EmitPointer (parameter->expression->offset);
+    {
+      if (!parameter->expression->offset)
+        fprintf (stderr, "Warning: Parameter has zero offset\n");
+
+      SCRIPT_EmitPointer (parameter->expression->offset);
+    }
 
   if (statement->next)
     SCRIPT_EmitPointer (statement->next->offset);

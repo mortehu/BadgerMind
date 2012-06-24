@@ -18,7 +18,8 @@ if ($path[0] == '.' || preg_match('/\.php$/', $path) || preg_match('/\.\./', $pa
 }
 
 $conversions =
-  array('application/vnd.autodesk.fbx application/vnd.badgermind.m0' => '/usr/local/bin/bm-fbx-convert');
+  array('application/vnd.autodesk.fbx application/vnd.badgermind.m0' => '/usr/local/bin/bm-fbx-convert',
+        'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert');
 
 if ($path[strlen($path) - 1] == '/')
   $path .= 'scene.bsd';

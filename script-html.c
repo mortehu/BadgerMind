@@ -117,7 +117,7 @@ script_dump_statement (struct ScriptStatement *statement, int level)
       script_dump_expression (parameter->expression, NULL != strstr (parameter->identifier, "URI"), level + 4 + strlen (parameter->identifier));
 
       if (parameter->next)
-        printf (",\n");
+        printf ("\n");
     }
 
   printf (")");

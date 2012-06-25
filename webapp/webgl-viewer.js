@@ -1,6 +1,15 @@
+var gl;
+var distance = 2.0, up = 0.5;
 var DRAW_currentTexture;
 var DRAW_pMatrix = mat4.create ();
 var DRAW_mvMatrix = mat4.create ();
+var DRAW_modelMatrix = mat4.create ();
+
+var vertexPositionBuffer;
+var vertexIndexBuffer;
+
+var lastTime = 0;
+
 
 function DRAW_SetupShaders ()
 {
@@ -27,7 +36,8 @@ function DRAW_SetupShaders ()
   shaderProgram.textureCoordAttribute = gl.getAttribLocation (shaderProgram, "aTextureCoord");
   gl.enableVertexAttribArray (shaderProgram.textureCoordAttribute);
 
-  shaderProgram.modelViewProjectionMatrixUniform = gl.getUniformLocation (shaderProgram, "uModelViewProjectionMatrix");
+  shaderProgram.pMatrixUniform = gl.getUniformLocation (shaderProgram, "uPMatrix");
+  shaderProgram.mvMatrixUniform = gl.getUniformLocation (shaderProgram, "uMVMatrix");
 
   gl.uniform1i (gl.getUniformLocation (shaderProgram, "uSampler"), 0);
 }
@@ -94,17 +104,20 @@ function DRAW_HandleLoadedTexture (texture)
 
 function DRAW_Flush ()
 {
-  var modelViewProjection = mat4.create ();
+  var model = mat4.create ();
 
   mat4.identity (DRAW_pMatrix);
-  mat4.perspective (45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, DRAW_pMatrix);
+  mat4.perspective (45, gl.viewportWidth / gl.viewportHeight, 0.1, 10000.0, DRAW_pMatrix);
 
   mat4.identity (DRAW_mvMatrix);
-  mat4.translate (DRAW_mvMatrix, [100.0 * Math.cos (elapsed), 1.0, 100.0 * Math.sin (elapsed)]);
+  mat4.rotate (DRAW_mvMatrix, Math.atan (up / distance), [1, 0, 0]); // Rotate 90 degrees around the Y axis
+  mat4.rotate (DRAW_mvMatrix, elapsed * 0.1 + Math.PI * 0.5, [0, 1, 0]); // Rotate 90 degrees around the Y axis
+  mat4.translate (DRAW_mvMatrix, [distance * Math.cos(elapsed * 0.1), -up, distance * Math.sin(elapsed * 0.1)]);
 
-  mat4.multiply(DRAW_mvMatrix, DRAW_pMatrix, modelViewProjection);
+  mat4.multiply(DRAW_mvMatrix, DRAW_modelMatrix, model); // Sets modelViewPersp to modelView * persp 
 
-  gl.uniformMatrix4fv (shaderProgram.modelViewProjectionMatrixUniform, false, modelViewProjection);
+  gl.uniformMatrix4fv (shaderProgram.pMatrixUniform, false, DRAW_pMatrix);
+  gl.uniformMatrix4fv (shaderProgram.mvMatrixUniform, false, model);
 
   gl.activeTexture (gl.TEXTURE0);
   gl.bindTexture (gl.TEXTURE_2D, DRAW_currentTexture);
@@ -116,12 +129,14 @@ function DRAW_Flush ()
   gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, vertexIndexBuffer);
 
   gl.drawElements (gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
-
 }
+
 
 function DRAW_LoadModel (data)
 {
   console.log ("Load model");
+
+  DRAW_currentTexture = DRAW_LoadTexture ("/placeholder.png");
 
   for (var i = 0; i < data.length; ++i)
   {
@@ -129,6 +144,8 @@ function DRAW_LoadModel (data)
 
     if (data[i]["texture-URI"])
       DRAW_currentTexture = DRAW_LoadTexture (data[i]["texture-URI"]);
+
+    DRAW_modelMatrix.set(data[i]["matrix"]);
 
     vertexPositionBuffer = gl.createBuffer ();
     gl.bindBuffer (gl.ARRAY_BUFFER, vertexPositionBuffer);
@@ -139,9 +156,7 @@ function DRAW_LoadModel (data)
     gl.bufferData (gl.ELEMENT_ARRAY_BUFFER, new Int16Array (data[i].triangles), gl.STATIC_DRAW);
 
     indexCount = data[i].triangles.length;
-    /*
-    vertexPositionBuffer.itemSize = 2;
-    */
+
     break;
   }
 }
@@ -167,7 +182,7 @@ function SYS_Init ()
 
   DRAW_SetupShaders ();
 
-  gl.clearColor (0.3, 0.0, 0.0, 1.0);
+  gl.clearColor (0.0, 0.0, 0.0, 1.0);
   gl.enable (gl.DEPTH_TEST);
 
   gl.enable (gl.BLEND);
@@ -178,11 +193,6 @@ function SYS_Init ()
 
 var lastTime = 0;
 var elapsed = 0;
-
-function VIEWER_SetupTextures ()
-{
-  placeholder = DRAW_LoadTexture ("placeholder.png");
-}
 
 function VIEWER_Init (modelURI)
 {
@@ -216,12 +226,13 @@ function VIEWER_Update ()
   if (deltaTime < 0 || deltaTime > 0.05)
     deltaTime = 0.05;
 
+  gl.viewport (0, 0, gl.viewportWidth, gl.viewportHeight);
   gl.clear (gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  if (SYS_keys['W']) y -= deltaTime * 10.0;
-  if (SYS_keys['A']) x -= deltaTime * 10.0;
-  if (SYS_keys['S']) y += deltaTime * 10.0;
-  if (SYS_keys['D']) x += deltaTime * 10.0;
+  if (SYS_keys['Q']) { distance /= Math.pow (1.05, 1.0 + deltaTime); up /= Math.pow (1.05, 1.0 + deltaTime); }
+  if (SYS_keys['A']) { distance *= Math.pow (1.05, 1.0 + deltaTime); up *= Math.pow (1.05, 1.0 + deltaTime); }
+  if (SYS_keys['W']) up *= Math.pow (1.05, 1.0 + deltaTime);
+  if (SYS_keys['S']) up /= Math.pow (1.05, 1.0 + deltaTime);
 
   DRAW_Flush ();
 

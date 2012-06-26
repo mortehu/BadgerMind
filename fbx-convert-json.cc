@@ -81,6 +81,9 @@ ExportMesh (FbxNode* node, FbxAMatrix& pGlobalPosition, int *first)
   mesh = node->GetMesh ();
   lVertexCount = mesh->GetControlPointsCount();
 
+  if (!strncmp (node->GetName (), "Bn_", 3))
+    return;
+
   if (!lVertexCount)
     return;
 

@@ -101,7 +101,7 @@ PrintMatrix (const char *name, int index, const FbxAMatrix& matrix)
 }
 
 static void
-ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
+ExportInitialClusterDeformation(FbxAMatrix& pGlobalPosition,
                          FbxMesh* pMesh,
                          const std::vector<vertex> &vertexArray)
 {
@@ -196,6 +196,9 @@ ExportMesh (FbxNode* node, FbxAMatrix& pGlobalPosition)
 
   mesh = node->GetMesh ();
   lVertexCount = mesh->GetControlPointsCount();
+
+  if (!strncmp (node->GetName (), "Bn_", 3))
+    return;
 
   if (!lVertexCount)
     return;
@@ -311,7 +314,7 @@ ExportMesh (FbxNode* node, FbxAMatrix& pGlobalPosition)
     }
 
   if (lClusterCount)
-    ExportClusterDeformation (pGlobalPosition, mesh, vertexArray);
+    ExportInitialClusterDeformation (pGlobalPosition, mesh, vertexArray);
 
   printf ("end-mesh\n");
 
@@ -356,7 +359,7 @@ GetGeometry(FbxNode* node)
   return FbxAMatrix(T, R, S);
 }
 
-static void ExportClusterDeformation(FbxAMatrix& pGlobalPosition,
+static void ExportClusterDeformationAtTime(FbxAMatrix& pGlobalPosition,
                               FbxMesh* pMesh,
                               FbxTime& time)
 {
@@ -437,7 +440,10 @@ ExportAnimRecursive(FbxNode* node,
   if (lNodeAttribute
       && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
     {
-      ExportClusterDeformation (lGlobalPosition, (FbxMesh *) node->GetNodeAttribute(), time);
+      if (strncmp (node->GetName (), "Bn_", 3))
+        {
+          ExportClusterDeformationAtTime (lGlobalPosition, (FbxMesh *) node->GetNodeAttribute(), time);
+        }
     }
 
   count = node->GetChildCount();

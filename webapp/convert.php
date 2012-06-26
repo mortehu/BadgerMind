@@ -17,6 +17,29 @@ if ($path[0] == '.' || preg_match('/\.php$/', $path) || preg_match('/\.\./', $pa
   exit;
 }
 
+if (is_dir($path))
+{
+  $path = rtrim($path, '/') . '/';
+
+  $files = scandir($path);
+
+  ?><ul><?
+
+  foreach ($files as $file)
+  {
+    if ($file[0] == '.')
+      continue;
+
+    $escaped_name = htmlentities($file, ENT_QUOTES, 'utf-8');
+
+    ?><li><a href='<?=$escaped_name?>'><?=$escaped_name?></a></li><?
+  }
+
+  ?></ul><?
+
+  exit;
+}
+
 $conversions =
   array('application/vnd.autodesk.fbx application/vnd.badgermind.m0' => '/usr/local/bin/bm-fbx-convert',
         'application/vnd.autodesk.fbx application/json' => '/usr/local/bin/bm-fbx-convert --format=json',

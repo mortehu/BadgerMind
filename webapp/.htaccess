@@ -7,4 +7,7 @@ AuthType Digest
 AuthName "BadgerMind"
 AuthDigestProvider file
 AuthUserFile /home/mortehu/src/BadgerMind/webapp/.digestpw
+
+<Limit OPTIONS DELETE PROPFIND PUT PROPPATCH COPY MOVE LOCK UNLOCK>
 Require valid-user
+</Limit>

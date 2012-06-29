@@ -2,3 +2,9 @@ RewriteEngine On
 
 RewriteCond %{REQUEST_FILENAME} !index.php
 RewriteRule !\.(js|css)$ index.php [NC,L]
+
+AuthType Digest
+AuthName "BadgerMind"
+AuthDigestProvider file
+AuthUserFile /home/mortehu/src/BadgerMind/webapp/.digestpw
+Require valid-user

@@ -1,19 +1,23 @@
 <?
-date_default_timezone_set('CET');
+date_default_timezone_set('GMT');
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-if (in_array(strtoupper($method), array('PUT', 'POST', 'MKCOL', 'DELETE')))
-{
-  if (!isset($_SERVER['PHP_AUTH_USER']))
-  {
-    header('WWW-Authenticate: Basic realm="BadgerMind"');
-    header('HTTP/1.0 401 Unauthorized');
-    echo 'Mutating operations require authentication';
+if (isset($_SERVER['HTTP_DEPTH']))
+  $depth = $_SERVER['HTTP_DEPTH'];
+else
+  $depth = 'infinity';
 
-    exit;
-  }
+if ($method == 'OPTIONS')
+{
+  header ('Allow: OPTIONS, GET, HEAD, DELETE, PROPFIND, PUT, PROPPATCH, COPY, MOVE, REPORT, LOCK, UNLOCK');
+  header ('MS-Author-Via: DAV');
+  header ('Accept-Ranges: bytes');
+
+  exit;
 }
+
+header ('DAV: 1, 3, extended-mkcol, 2');
 
 $path = explode("?", $_SERVER['REQUEST_URI'], 2);
 
@@ -22,13 +26,71 @@ if (sizeof($path) > 1)
 
 $path = ltrim(preg_replace('/\/\/\/*/', '/', $path[0]), '/');
 
-if (!preg_match('/\//', $path) || $path[0] == '.' || preg_match('/\.php$/', $path) || preg_match('/\.\./', $path))
+$path = "/home/mortehu/BadgerMind-root/{$path}";
+
+if (in_array('..', explode('/', $path)))
 {
   header('HTTP/1.1 403 Forbidden');
 
   echo "403 Forbidden\n";
 
   exit;
+}
+
+function print_file_response($fullpath, $uri)
+{
+  $basename = pathinfo($fullpath, PATHINFO_BASENAME);
+
+  if (is_dir($fullpath))
+  {
+    $fullpath = rtrim($fullpath, '/') . '/';
+    $uri = rtrim($uri, '/') . '/';
+  }
+
+  echo "<d:response>";
+
+  echo "<d:href>";
+  echo $uri;
+  echo "</d:href>";
+
+  echo '<d:propstat>';
+  echo '<d:prop>';
+
+  if (false !== ($mtime = filemtime($fullpath)))
+  {
+    echo "<d:getlastmodified xmlns:b=\"urn:uuid:c2f41010-65b3-11d1-a29f-00aa00c14882/\" b:dt=\"dateTime.rfc1123\">";
+    echo strftime('%a, %d %b %Y %T %Z', $mtime);
+    echo "</d:getlastmodified>";
+  }
+
+  if (is_dir($fullpath))
+  {
+    echo "<d:resourcetype><d:collection/></d:resourcetype>";
+    echo "<d:quota-used-bytes>100507529216</d:quota-used-bytes>";
+    echo "<d:quota-available-bytes>49287102464</d:quota-available-bytes>";
+  }
+  else
+  {
+    echo "<d:resourcetype/>";
+
+    if (false !== ($size = filesize($fullpath)))
+    {
+      echo "<d:getcontentlength>";
+      echo $size;
+      echo "</d:getcontentlength>";
+    }
+
+    echo "<d:getetag>";
+    echo sha1(file_get_contents($fullpath));
+    echo "</d:getetag>";
+  }
+
+  echo '</d:prop>';
+
+  echo '<d:status>HTTP/1.1 200 OK</d:status>';
+  echo '</d:propstat>';
+
+  echo "</d:response>";
 }
 
 if (is_dir($path))
@@ -67,90 +129,60 @@ if (is_dir($path))
     }
     else if ($method == 'PROPFIND')
     {
-      $propfind = simplexml_load_file('php://input');
+      $propfind = file_get_contents('php://input');
 
       header('HTTP/1.1 207 Multi-Status');
-      header('Content-Type: text/xml');
+      header('Content-Type: application/xml; charset=utf-8');
 
-      $base_uri = rtrim("http://{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}", '/') . '/';
+      ob_start("ob_gzhandler");
 
-      echo "<?xml version='1.0' encoding='utf-8'?>\n";
-      echo "<multistatus xmlns='DAV:'>\n";
+      $base_uri = rtrim("{$_SERVER['REQUEST_URI']}", '/') . '/';
 
-        echo "<response>";
+      echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+      echo "<d:multistatus xmlns:d=\"DAV:\">";
 
-        echo "<href>";
-        echo $base_uri;
-        echo "</href>";
+      print_file_response("$path", "$base_uri");
 
-        echo '<propstat>';
-        echo '<status>HTTP/1.1 200 OK</status>';
-        echo '<prop>';
-        echo '<resourcetype><collection/></resourcetype>';
-        echo '</prop>';
-        echo '</propstat>';
-
-        echo "</response>\n";
-
-      foreach ($files as $file)
+      if ($depth != '0')
       {
-        if ($file[0] == '.')
-          continue;
-
-        $fullpath = $base_uri . $file;
-
-        if (is_dir($fullpath))
-          $fullpath .= '/';
-
-        $localpath = $path . $file;
-
-        echo "<response>";
-
-        echo "<href>";
-        echo $fullpath;
-        echo "</href>";
-
-        echo '<propstat>';
-        echo '<prop>';
-
-        if (false !== ($mtime = filemtime($localpath)))
+        foreach ($files as $file)
         {
-          echo "<getlastmodified>";
-          echo strftime('%a, %d %b %y %T %z', $mtime);
-          echo "</getlastmodified>";
+          if ($file[0] == '.')
+            continue;
+
+          print_file_response("$path$file", "$base_uri$file");
         }
-
-        if (is_dir($localpath))
-        {
-          echo "<resourcetype><collection/></resourcetype>";
-        }
-        else
-        {
-          if (false !== ($size = filesize($localpath)))
-          {
-            echo "<getcontentlength>";
-            echo $size;
-            echo "</getcontentlength>";
-          }
-        }
-
-        echo '</prop>';
-
-        echo '<status>HTTP/1.1 200 OK</status>';
-        echo '</propstat>';
-
-        echo "</response>\n";
       }
 
-      echo "</multistatus>\n";
+      echo "</d:multistatus>\n";
     }
 
     exit;
   }
 }
+else if (file_exists($path))
+{
+  if ($method == 'PROPFIND')
+  {
+    $propfind = file_get_contents('php://input');
 
-if ($method == 'OPTIONS')
-  exit;
+    header('HTTP/1.1 207 Multi-Status');
+    header('Content-Type: application/xml; charset=UTF-8');
+
+    ob_start("ob_gzhandler");
+
+    echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+    echo "<d:multistatus xmlns:d=\"DAV:\" xmlns:b=\"urn:uuid:c2f41010-65b3-11d1-a29f-00aa00c14882/\">";
+
+    $base_uri = rtrim("{$_SERVER['REQUEST_URI']}", '/');
+
+    print_file_response("$path", "$base_uri");
+
+    echo "</d:multistatus>\n";
+
+    exit;
+  }
+}
 
 if ($method == 'MKCOL')
 {
@@ -193,6 +225,15 @@ if ($method == 'PUT')
   }
 }
 
+if (!file_exists($path))
+{
+  header('HTTP/1.1 404 Not Found');
+
+  echo "404 Not Found\n";
+
+  exit;
+}
+
 if ($method != 'GET' && $method != 'HEAD')
 {
   header("HTTP/1.1 405 Method {$method} Not Allowed");
@@ -213,36 +254,25 @@ if(isset($_SERVER['HTTP_IF_MODIFIED_SINCE']))
   }
 }
 
-if (file_exists($path))
-{
-  $extension = pathinfo($path, PATHINFO_EXTENSION);
+$extension = pathinfo($path, PATHINFO_EXTENSION);
 
-  if (0 == strcasecmp($extension, "fbx"))
-    $content_type = 'application/vnd.autodesk.fbx';
-  elseif (0 == strcasecmp($extension, "png"))
-    $content_type = 'image/png';
-  elseif (0 == strcasecmp($extension, "jpg"))
-    $content_type = 'image/jpeg';
-  elseif (0 == strcasecmp($extension, "mp3"))
-    $content_type = 'audio/mpeg';
-  elseif (0 == strcasecmp($extension, "mp4"))
-    $content_type = 'audio/mp4';
-  elseif (0 == strcasecmp($extension, "webm"))
-    $content_type = 'audio/webm';
-  elseif (0 == strcasecmp($extension, "bsd"))
-    $content_type = 'application/vnd.badgermind.sd';
-  else
-  {
-    readfile($path);
-
-    exit;
-  }
-}
+if (0 == strcasecmp($extension, "fbx"))
+  $content_type = 'application/vnd.autodesk.fbx';
+elseif (0 == strcasecmp($extension, "png"))
+  $content_type = 'image/png';
+elseif (0 == strcasecmp($extension, "jpg"))
+  $content_type = 'image/jpeg';
+elseif (0 == strcasecmp($extension, "mp3"))
+  $content_type = 'audio/mpeg';
+elseif (0 == strcasecmp($extension, "mp4"))
+  $content_type = 'audio/mp4';
+elseif (0 == strcasecmp($extension, "webm"))
+  $content_type = 'audio/webm';
+elseif (0 == strcasecmp($extension, "bsd"))
+  $content_type = 'application/vnd.badgermind.sd';
 else
 {
-  header('HTTP/1.1 404 Not Found');
-
-  echo "404 Not Found\n";
+  readfile($path);
 
   exit;
 }

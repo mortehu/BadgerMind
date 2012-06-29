@@ -28,6 +28,7 @@
 /script-parser.c
 /script-parser.h
 /stamp-h1
+/ylwrap
 Makefile
 bm-*
 core

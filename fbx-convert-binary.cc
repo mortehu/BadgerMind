@@ -1,506 +1,228 @@
 #include <map>
 #include <vector>
 
-#include <err.h>
-#include <errno.h>
-#include <getopt.h>
-#include <math.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sysexits.h>
-#include <unistd.h>
+#include <assert.h>
 
-#define FBXSDK_NEW_API
+#include "fbx-convert.h"
 
-#include <fbxsdk.h>
-#include <fbxsdk/utils/fbxutilities.h>
-
-static FbxAMatrix
-GetGeometry(FbxNode* node);
-
-struct vertex
-{
-  unsigned int controlPoint;
-  float u, v;
-
-  bool
-  operator<(const struct vertex &rhs) const
-    {
-#define TEST(a) if (a != rhs.a) return a < rhs.a;
-
-      TEST(controlPoint)
-      TEST(u)
-
-#undef TEST
-
-      return v < rhs.v;
-    }
-};
-
-struct VertexWeights
-{
-  double weights[4];
-  unsigned int bones[4];
-
-  VertexWeights()
-    {
-      memset (weights, 0, sizeof (weights));
-      memset (bones, 0, sizeof (bones));
-    }
-
-  void AddWeight (double weight, unsigned int bone)
-    {
-      unsigned int i;
-
-      for (i = 0; i < 4; ++i)
-        {
-          if (weights[i] < weight)
-            {
-              memmove (weights + i + 1, weights + i, (4 - i - 1) * sizeof (weights[0]));
-              memmove (bones + i + 1, bones + i, (4 - i - 1) * sizeof (bones[0]));
-
-              weights[i] = weight;
-              bones[i] = bone;
-
-              return;
-            }
-        }
-    }
-};
+static off_t FbxConvert_dumpOffset;
 
 static void
-PrintTransf (const char *name, int index, const FbxAMatrix& matrix)
+FbxConvert_EmitByte (unsigned int byte)
 {
-  FbxQuaternion quat;
-  FbxVector4 transl;
-
-  transl = matrix.GetT ();
-  quat = matrix.GetQ ();
-
-  printf ("%s %d  %.6g %.6g %.6g %.6g  %.6g %.6g %.6g ", name, index,
-          quat[0], quat[1], quat[2], quat[3],
-          transl[0], transl[1], transl[2]);
-
-  printf ("\n");
+  putchar (byte & 0xff);
+  FbxConvert_dumpOffset++;
 }
 
 static void
-PrintMatrix (const char *name, int index, const FbxAMatrix& matrix)
+FbxConvert_EmitU16 (unsigned int u16)
 {
-  int k;
-
-  printf ("%s %d", name, index);
-
-  for (k = 0; k < 12; ++k)
-    printf (" %.6g", matrix.Get (k / 4, k % 4));
-
-  for (; k < 16; ++k)
-    printf (" %.6g", matrix.Get (k / 4, k % 4));
-
-  printf ("\n");
+  putchar (u16 & 0xff);
+  putchar ((u16 >> 8) & 0xff);
+  FbxConvert_dumpOffset += 2;
 }
 
 static void
-ExportInitialClusterDeformation(FbxAMatrix& pGlobalPosition,
-                         FbxMesh* pMesh,
-                         const std::vector<vertex> &vertexArray)
+FbxConvert_EmitU32 (unsigned int u32)
 {
-  FbxCluster::ELinkMode lClusterMode = ((FbxSkin*)pMesh->GetDeformer(0, FbxDeformer::eSkin))->GetCluster(0)->GetLinkMode();
-
-  unsigned int i, j;
-  unsigned int lClusterCount=0;
-  unsigned int lVertexCount = pMesh->GetControlPointsCount();
-  unsigned int lSkinCount=pMesh->GetDeformerCount(FbxDeformer::eSkin);
-
-  VertexWeights *weights;
-
-  weights = new VertexWeights[lVertexCount];
-
-  for(i=0; i<lSkinCount; ++i)
-    {
-      lClusterCount = ((FbxSkin *)pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetClusterCount();
-
-      for (j=0; j<lClusterCount; ++j)
-        {
-          FbxCluster* lCluster = ((FbxSkin *) pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetCluster(j);
-          int k;
-
-          if (!lCluster->GetLink())
-            continue;
-
-          FbxAMatrix lReferenceGlobalInitPosition;
-          FbxAMatrix lClusterGlobalInitPosition;
-          FbxAMatrix lClusterGeometry;
-
-          FbxAMatrix lClusterRelativeInitPosition;
-          FbxAMatrix lVertexTransformMatrix;
-
-          if (lClusterMode == FbxCluster::eAdditive && lCluster->GetAssociateModel())
-            {
-              lCluster->GetTransformAssociateModelMatrix(lReferenceGlobalInitPosition);
-            }
-          else
-            {
-              lCluster->GetTransformMatrix(lReferenceGlobalInitPosition);
-
-              lReferenceGlobalInitPosition *= GetGeometry(pMesh->GetNode());
-            }
-
-          lCluster->GetTransformLinkMatrix(lClusterGlobalInitPosition);
-
-          lClusterRelativeInitPosition = lClusterGlobalInitPosition.Inverse() * lReferenceGlobalInitPosition;
-
-          PrintMatrix ("bone-matrix", j, lClusterRelativeInitPosition);
-
-          int lVertexIndexCount = lCluster->GetControlPointIndicesCount();
-
-          for (k = 0; k < lVertexIndexCount; ++k)
-            {
-              int lIndex = lCluster->GetControlPointIndices()[k];
-              double lWeight = lCluster->GetControlPointWeights()[k];
-
-              if (lWeight == 0.0)
-                continue;
-
-              weights[lIndex].AddWeight (lWeight, j);
-            }
-        }
-    }
-
-  for (i = 0; i < vertexArray.size (); i++)
-  {
-    unsigned int controlPoint;
-
-    controlPoint = vertexArray[i].controlPoint;
-
-    printf ("bone-weights %d %.6g %.6g %.6g %.6g %u %u %u %u\n",
-        i,
-        weights[controlPoint].weights[0], weights[controlPoint].weights[1], weights[controlPoint].weights[2], weights[controlPoint].weights[3],
-        weights[controlPoint].bones[0], weights[controlPoint].bones[1], weights[controlPoint].bones[2], weights[controlPoint].bones[3]);
-  }
-
-  delete [] weights;
+  putchar (u32 & 0xff);
+  putchar ((u32 >> 8) & 0xff);
+  putchar ((u32 >> 16) & 0xff);
+  putchar ((u32 >> 24) & 0xff);
+  FbxConvert_dumpOffset += 4;
 }
 
 static void
-ExportMesh (FbxNode* node, FbxAMatrix& pGlobalPosition)
+FbxConvert_EmitFloat (float value)
 {
-  FbxMesh* mesh;
-  unsigned int lClusterCount = 0;
-  unsigned int lSkinCount = 0;
-  unsigned int lVertexCount;
-  unsigned int i;
+  fwrite (&value, sizeof (value), 1, stdout);
+  FbxConvert_dumpOffset += sizeof (float);
+}
 
-  std::map<vertex, int> vertexMap;
-  std::vector<vertex> vertexArray;
+static void
+FbxConvert_EmitPointer (off_t byte)
+{
+  putchar (byte & 0xff);
+  putchar ((byte >> 8) & 0xff);
+  putchar ((byte >> 16) & 0xff);
+  putchar ((byte >> 24) & 0xff);
 
-  mesh = node->GetMesh ();
-  lVertexCount = mesh->GetControlPointsCount();
+  FbxConvert_dumpOffset += 4;
+}
 
-  if (!strncmp (node->GetName (), "Bn_", 3))
-    return;
+static void
+FbxConvert_Align (void)
+{
+  while (FbxConvert_dumpOffset & 0x3)
+    FbxConvert_EmitByte (0xaa);
+}
 
-  if (!lVertexCount)
-    return;
+static off_t
+FbxConvert_EmitVertexBuffer (const fbx_mesh &mesh)
+{
+  size_t i, vertexCount;
+  off_t result;
 
-  lSkinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
+  vertexCount = mesh.xyz.size () / 3;
 
-  for (i = 0; i < lSkinCount; i++)
-    lClusterCount += ((FbxSkin *)(mesh->GetDeformer(i, FbxDeformer::eSkin)))->GetClusterCount();
+  assert (vertexCount * 2 == mesh.uv.size ());
 
-  printf ("begin-mesh\n");
+  FbxConvert_Align ();
 
+  result = FbxConvert_dumpOffset;
+
+  if (!mesh.weights.size ())
     {
-      int lMaterialIndex;
-      int lTextureIndex;
-      FbxProperty lProperty;
-      int lNbTex;
-      FbxSurfaceMaterial *lMaterial = NULL;
-      int lNbMat = node->GetSrcObjectCount(FbxSurfaceMaterial::ClassId);
+      assert (!mesh.bones.size ());
 
-      for (lMaterialIndex = 0; lMaterialIndex < lNbMat; lMaterialIndex++)
+      FbxConvert_EmitU16 (0x0000); /* Vertex format */
+      FbxConvert_EmitU16 (vertexCount);
+
+      for (i = 0; i < vertexCount; ++i)
         {
-          lMaterial = FbxCast <FbxSurfaceMaterial>(node->GetSrcObject(FbxSurfaceMaterial::ClassId, lMaterialIndex));
-
-          if(!lMaterial)
-            continue;
-
-          lProperty = lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse);
-
-          if(!lProperty.IsValid())
-            continue;
-
-          lNbTex = lProperty.GetSrcObjectCount(FbxTexture::ClassId);
-
-          for (lTextureIndex = 0; lTextureIndex < lNbTex; lTextureIndex++)
-            {
-              FbxFileTexture *lFileTexture;
-
-              if (!(lFileTexture = FbxCast<FbxFileTexture>(lProperty.GetSrcObject(FbxTexture::ClassId, lTextureIndex))))
-                continue;
-
-              printf ("texture %s\n", (const char *) lFileTexture->GetRelativeFileName ());
-            }
+          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 0]);
+          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 1]);
+          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 2]);
+          FbxConvert_EmitFloat (mesh.uv[i * 3 + 0]);
+          FbxConvert_EmitFloat (mesh.uv[i * 3 + 1]);
         }
     }
-
-  printf ("matrix");
-  for (i = 0; i < 16; ++i)
-    printf (" %.6g", pGlobalPosition.Get (i / 4, i % 4));
-  printf ("\n");
-
-  FbxStringList lUVNames;
-  const char * lUVName;
-
-  mesh->GetUVSetNames(lUVNames);
-
-  if (lUVNames.GetCount())
-    lUVName = lUVNames[0];
   else
-    lUVName = 0;
-
-  for (i = 0; i < (unsigned int) mesh->GetPolygonCount(); i++)
     {
-      int j, polygonSize;
-      int *indices;
+      assert (vertexCount * 4 == mesh.bones.size ());
+      assert (mesh.weights.size () == mesh.bones.size ());
 
-      polygonSize = mesh->GetPolygonSize(i);
+      FbxConvert_EmitU16 (0x0001); /* Vertex format */
+      FbxConvert_EmitU16 (vertexCount);
 
-      indices = new int[polygonSize];
-
-      for (j = 0; j < polygonSize; j++)
+      for (i = 0; i < vertexCount; ++i)
         {
-          vertex newVertex;
+          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 0]);
+          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 1]);
+          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 2]);
+          FbxConvert_EmitFloat (mesh.uv[i * 3 + 0]);
+          FbxConvert_EmitFloat (mesh.uv[i * 3 + 1]);
 
-          FbxVector2 uv;
-
-          newVertex.controlPoint = mesh->GetPolygonVertex(i, j);
-
-          mesh->GetPolygonVertexUV (i, j, lUVName, uv);
-
-          newVertex.u = uv[0];
-          newVertex.v = uv[1];
-
-          auto oldVertex = vertexMap.find (newVertex);
-
-          if (oldVertex != vertexMap.end ())
-            indices[j] = oldVertex->second;
-          else
-            {
-              indices[j] = vertexArray.size ();
-
-              vertexArray.push_back (newVertex);
-              vertexMap[newVertex] = indices[j];
-            }
-        }
-
-      for (j = 2; j < polygonSize; ++j)
-        printf ("triangle %d %d %d\n", indices[0], indices[j - 1], indices[j]);
-
-      delete [] indices;
-    }
-
-  for (i = 0; i < vertexArray.size (); ++i)
-    {
-      vertex v;
-      double *xyz;
-
-      v = vertexArray[i];
-
-      xyz = (double *) mesh->GetControlPoints()[v.controlPoint];
-
-      printf ("xyz %d %.6g %.6g %.6g\n", i, xyz[0], xyz[1], xyz[2]);
-      printf ("uv %d %.6g %.6g\n", i, v.u, v.v);
-    }
-
-  if (lClusterCount)
-    ExportInitialClusterDeformation (pGlobalPosition, mesh, vertexArray);
-
-  printf ("end-mesh\n");
-
-  fflush (stdout);
-}
-
-
-void
-ExportMeshBinaryRecursive (FbxNode* node,
-                           FbxAMatrix& pParentGlobalPosition)
-{
-  FbxTime time;
-
-  // Compute the node's global position.
-  FbxAMatrix lGlobalPosition = node->EvaluateGlobalTransform(time);
-
-  // Geometry offset.
-  // it is not inherited by the children.
-  FbxAMatrix lGeometryOffset = GetGeometry(node);
-  FbxAMatrix lGlobalOffPosition = lGlobalPosition * lGeometryOffset;
-
-  FbxNodeAttribute* lNodeAttribute = node->GetNodeAttribute();
-
-  if (lNodeAttribute && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
-    ExportMesh (node, lGlobalPosition);
-
-  int i, lCount = node->GetChildCount();
-
-  for (i = 0; i < lCount; i++)
-    ExportMeshBinaryRecursive (node->GetChild(i), lGlobalPosition);
-}
-
-// Get the geometry deformation local to a node. It is never inherited by the
-// children.
-static FbxAMatrix
-GetGeometry(FbxNode* node)
-{
-  const FbxVector4 T = node->GetGeometricTranslation(FbxNode::eSourcePivot);
-  const FbxVector4 R = node->GetGeometricRotation(FbxNode::eSourcePivot);
-  const FbxVector4 S = node->GetGeometricScaling(FbxNode::eSourcePivot);
-
-  return FbxAMatrix(T, R, S);
-}
-
-static void ExportClusterDeformationAtTime(FbxAMatrix& pGlobalPosition,
-                              FbxMesh* pMesh,
-                              FbxTime& time)
-{
-  FbxCluster::ELinkMode lClusterMode;
-  FbxSkin *skin;
-
-  skin = (FbxSkin *) pMesh->GetDeformer(0, FbxDeformer::eSkin);
-
-  if (!skin)
-    return;
-
-  lClusterMode = skin->GetCluster(0)->GetLinkMode();
-
-  int i, j;
-  int lClusterCount=0;
-  int lVertexCount = pMesh->GetControlPointsCount();
-  int lSkinCount=pMesh->GetDeformerCount(FbxDeformer::eSkin);
-
-  if (!lVertexCount)
-    return;
-
-  for(i=0; i<lSkinCount; ++i)
-    {
-      lClusterCount =( (FbxSkin *)pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetClusterCount();
-
-      for (j=0; j<lClusterCount; ++j)
-        {
-          FbxCluster* lCluster =((FbxSkin *) pMesh->GetDeformer(i, FbxDeformer::eSkin))->GetCluster(j);
-
-          if (!lCluster->GetLink())
-            continue;
-
-          FbxAMatrix lReferenceGlobalCurrentPosition;
-          FbxAMatrix lClusterGlobalInitPosition;
-          FbxAMatrix lClusterGlobalCurrentPosition;
-          FbxAMatrix lClusterGeometry;
-
-          FbxAMatrix lClusterRelativeInitPosition;
-          FbxAMatrix lClusterRelativeCurrentPositionInverse;
-          FbxAMatrix lVertexTransformMatrix;
-
-          if (lClusterMode == FbxCluster::eAdditive && lCluster->GetAssociateModel())
-            {
-              lReferenceGlobalCurrentPosition = lCluster->GetAssociateModel()->EvaluateGlobalTransform(time);
-
-              lReferenceGlobalCurrentPosition *= GetGeometry(lCluster->GetAssociateModel());
-            }
-          else
-            {
-              lReferenceGlobalCurrentPosition = pGlobalPosition;
-            }
-
-
-          lClusterGlobalCurrentPosition = lCluster->GetLink()->EvaluateGlobalTransform(time);
-
-          lClusterRelativeCurrentPositionInverse = lReferenceGlobalCurrentPosition.Inverse() * lClusterGlobalCurrentPosition;
-
-          PrintTransf ("bone-transf", j, lClusterRelativeCurrentPositionInverse);
-        }
-    }
-}
-
-static void
-ExportAnimRecursive(FbxNode* node,
-                    FbxTime& time,
-                    FbxAMatrix& pParentGlobalPosition)
-{
-  FbxAMatrix lGlobalPosition, lGeometryOffset, lGlobalOffPosition;
-  FbxNodeAttribute* lNodeAttribute;
-  int i, count;
-
-  lGlobalPosition = node->EvaluateGlobalTransform(time);
-  lGeometryOffset = GetGeometry(node);
-  lGlobalOffPosition = lGlobalPosition * lGeometryOffset;
-
-  lNodeAttribute = node->GetNodeAttribute();
-
-  if (lNodeAttribute
-      && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
-    {
-      if (strncmp (node->GetName (), "Bn_", 3))
-        {
-          ExportClusterDeformationAtTime (lGlobalPosition, (FbxMesh *) node->GetNodeAttribute(), time);
+          FbxConvert_EmitByte (mesh.weights[i * 4 + 0]);
+          FbxConvert_EmitByte (mesh.weights[i * 4 + 1]);
+          FbxConvert_EmitByte (mesh.weights[i * 4 + 2]);
+          FbxConvert_EmitByte (mesh.weights[i * 4 + 3]);
+          FbxConvert_EmitByte (mesh.bones[i * 4 + 0]);
+          FbxConvert_EmitByte (mesh.bones[i * 4 + 1]);
+          FbxConvert_EmitByte (mesh.bones[i * 4 + 2]);
+          FbxConvert_EmitByte (mesh.bones[i * 4 + 3]);
         }
     }
 
-  count = node->GetChildCount();
-
-  for (i = 0; i < count; ++i)
-    ExportAnimRecursive(node->GetChild(i), time, lGlobalPosition);
+  return result;
 }
 
-static void
-ExportAnimScene (FbxScene* pScene, FbxTime& time)
+static off_t
+FbxConvert_EmitIndexBuffer (const fbx_mesh &mesh)
 {
-  FbxAMatrix lDummyGlobalPosition;
+  off_t result;
 
-  int i, lCount = pScene->GetRootNode()->GetChildCount();
+  FbxConvert_Align ();
 
-  printf ("begin-frame\n");
-  printf ("time %.3f\n", time.GetSecondDouble());
+  result = FbxConvert_dumpOffset;
 
-  for (i = 0; i < lCount; i++)
-    ExportAnimRecursive(pScene->GetRootNode()->GetChild(i), time, lDummyGlobalPosition);
+  FbxConvert_EmitU32 (mesh.indices.size());
 
-  printf ("end-frame\n");
+  for (auto index : mesh.indices)
+    FbxConvert_EmitU16 (index);
+
+  return result;
+}
+
+static off_t
+FbxConvert_EmitString (const char *string)
+{
+  off_t result;
+
+  result = FbxConvert_dumpOffset;
+
+  while (*string)
+    FbxConvert_EmitByte (*string++);
+
+  FbxConvert_EmitByte (0);
+
+  return result;
+}
+
+static off_t
+FbxConvert_EmitMesh (const fbx_mesh &mesh, off_t nextMesh)
+{
+  size_t i;
+  off_t vertexBufferOffset, indexBufferOffset, diffuseTextureNameOffset, result;
+
+  diffuseTextureNameOffset = FbxConvert_EmitString (mesh.diffuseTexture.c_str ());
+  vertexBufferOffset = FbxConvert_EmitVertexBuffer (mesh);
+  indexBufferOffset = FbxConvert_EmitIndexBuffer (mesh);
+
+  FbxConvert_Align ();
+
+  result = FbxConvert_dumpOffset;
+
+  FbxConvert_EmitPointer (nextMesh);
+  for (i = 0; i < 16; ++i)
+    FbxConvert_EmitFloat (mesh.matrix.v[i]);
+  FbxConvert_EmitPointer (diffuseTextureNameOffset);
+  FbxConvert_EmitPointer (vertexBufferOffset);
+  FbxConvert_EmitPointer (indexBufferOffset);
+
+  return result;
+}
+
+static off_t
+FbxConvert_EmitFrame (const fbx_frame &frame)
+{
+  off_t result;
+
+  result = FbxConvert_dumpOffset;
+
+  for (auto v : frame.pose)
+    FbxConvert_EmitFloat (v);
+
+  return result;
+}
+
+static off_t
+FbxConvert_EmitTake (const fbx_take &take, off_t nextTake)
+{
+  off_t takeNameOffset, result;
+
+  takeNameOffset = FbxConvert_EmitString (take.name.c_str ());
+
+  FbxConvert_Align ();
+
+  result = FbxConvert_dumpOffset;
+
+  FbxConvert_EmitPointer (nextTake);
+  FbxConvert_EmitPointer (takeNameOffset);
+  FbxConvert_EmitFloat (take.interval);
+  FbxConvert_EmitU32 (take.frames.size ());
+
+  for (auto frame : take.frames)
+    FbxConvert_EmitFrame (frame);
+
+  return result;
 }
 
 void
-ExportTakeBinary (FbxScene *scene, FbxString *takeName)
+FbxConvertExportBinary (fbx_model &model)
 {
-  FbxTakeInfo* lCurrentTakeInfo;
-  FbxTime period, start, stop, currentTime;
+  off_t nextMesh = 0, nextTake = 0;
 
-  FbxAnimStack *lCurrentAnimationStack;
+  FbxConvert_EmitU32 (0xbad6e2aa);
 
-  lCurrentAnimationStack = scene->FindMember(FBX_TYPE(FbxAnimStack), takeName->Buffer());
+  for (auto mesh : model.meshes)
+    nextMesh = FbxConvert_EmitMesh (mesh, nextMesh);
 
-  if (lCurrentAnimationStack == NULL)
-    {
-      fprintf (stderr, "Animation stack %s not found!\n", (const char *) *takeName);
+  for (auto take : model.takes)
+    nextTake = FbxConvert_EmitTake (take, nextTake);
 
-      exit (EXIT_FAILURE);
-    }
+  FbxConvert_Align ();
 
-  scene->GetEvaluator()->SetContext(lCurrentAnimationStack);
-
-  lCurrentTakeInfo = scene->GetTakeInfo(*takeName);
-
-  if (!lCurrentTakeInfo)
-    return;
-
-  printf ("begin-take %s\n", (const char *) *takeName);
-
-  period.SetMilliSeconds (10.0);
-
-  start = lCurrentTakeInfo->mLocalTimeSpan.GetStart();
-  stop = lCurrentTakeInfo->mLocalTimeSpan.GetStop();
-
-  for (currentTime = start; currentTime <= stop; currentTime += period)
-    ExportAnimScene (scene, currentTime);
-
-  printf ("end-take\n");
+  FbxConvert_EmitPointer (nextTake);
+  FbxConvert_EmitPointer (nextMesh);
 }

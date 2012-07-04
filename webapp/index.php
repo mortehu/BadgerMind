@@ -19,23 +19,7 @@ if ($method == 'OPTIONS')
 
 header ('DAV: 1, 3, extended-mkcol, 2');
 
-$path = explode("?", $_SERVER['REQUEST_URI'], 2);
-
-if (sizeof($path) > 1)
-  $params = $path[1];
-
-$path = ltrim(preg_replace('/\/\/\/*/', '/', $path[0]), '/');
-
-$path = "/home/mortehu/BadgerMind-root/{$path}";
-
-if (in_array('..', explode('/', $path)))
-{
-  header('HTTP/1.1 403 Forbidden');
-
-  echo "403 Forbidden\n";
-
-  exit;
-}
+require_once('lib/path.php');
 
 function print_file_response($fullpath, $uri)
 {
@@ -102,10 +86,6 @@ if (is_dir($path))
     header('HTTP/1.1 405 Directory Already Exists');
 
     exit;
-  }
-  else if (file_exists("$path/scene.bsd") && $method != 'PROPFIND')
-  {
-    $path = "$path/scene.bsd";
   }
   else
   {
@@ -278,7 +258,7 @@ else
 }
 
 $conversions =
-  array('application/vnd.autodesk.fbx application/vnd.badgermind.m0' => '/usr/local/bin/bm-fbx-convert',
+  array('application/vnd.autodesk.fbx application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-fbx-convert',
         'application/vnd.autodesk.fbx application/json' => '/usr/local/bin/bm-fbx-convert --format=json',
         'application/vnd.autodesk.fbx text/html' => 'model-webgl-wrapper.php',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert',

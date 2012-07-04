@@ -708,7 +708,7 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
   output.takes.push_back (fbx_take ());
   fbx_take &take = output.takes.back ();
 
-  take.name = (const char *) takeName;
+  take.name = (const char *) *takeName;
   take.interval = 1000. / 60.;
 
   period.SetMilliSeconds (take.interval);

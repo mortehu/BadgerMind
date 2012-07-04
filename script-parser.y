@@ -37,11 +37,14 @@ yyerror(YYLTYPE *loc, struct script_parse_context *context, const char *message)
 %token StringLiteral
 %type<p> StringLiteral
 
+%token BinaryLiteral
+%type<p> BinaryLiteral
+
 %type<p> statements statement
 %type<p> parameters parameter
 %type<p> expression
 
-%left '+' '-' '*' '/'
+%left '=' '<' '>' '+' '-' '*' '/' UMINUS
 
 %start document
 %%
@@ -143,6 +146,14 @@ expression
         expr->lhs.string = $1;
         $$ = expr;
       }
+    | BinaryLiteral
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionBinary;
+        expr->lhs.string = $1;
+        $$ = expr;
+      }
     | statement
       {
         struct ScriptExpression *expr;
@@ -193,6 +204,14 @@ expression
         expr->type = ScriptExpressionDivide;
         expr->lhs.expression = $1;
         expr->rhs = $3;
+        $$ = expr;
+      }
+    | '-' expression %prec UMINUS
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionNegative;
+        expr->lhs.expression = $2;
         $$ = expr;
       }
     ;

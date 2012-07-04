@@ -1,3 +1,7 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <map>
 #include <vector>
 
@@ -5,224 +9,171 @@
 
 #include "fbx-convert.h"
 
-static off_t FbxConvert_dumpOffset;
-
 static void
-FbxConvert_EmitByte (unsigned int byte)
+FbxConvert_EmitByte (FILE *output, unsigned int byte)
 {
-  putchar (byte & 0xff);
-  FbxConvert_dumpOffset++;
+  fprintf (output, "%02x", byte);
 }
 
 static void
-FbxConvert_EmitU16 (unsigned int u16)
+FbxConvert_EmitU16 (FILE *output, unsigned int u16)
 {
-  putchar (u16 & 0xff);
-  putchar ((u16 >> 8) & 0xff);
-  FbxConvert_dumpOffset += 2;
+  fprintf (output, "%02x%02x", u16 & 0xff, (u16 >> 8) & 0xff);
 }
 
 static void
-FbxConvert_EmitU32 (unsigned int u32)
+FbxConvert_EmitFloat (FILE *output, float value)
 {
-  putchar (u32 & 0xff);
-  putchar ((u32 >> 8) & 0xff);
-  putchar ((u32 >> 16) & 0xff);
-  putchar ((u32 >> 24) & 0xff);
-  FbxConvert_dumpOffset += 4;
+  union
+    {
+      float float_;
+      unsigned char bytes[4];
+    } tmp;
+
+  tmp.float_ = value;
+
+  fprintf (output, "%02x%02x%02x%02x", tmp.bytes[0], tmp.bytes[1], tmp.bytes[2], tmp.bytes[3]);
 }
 
 static void
-FbxConvert_EmitFloat (float value)
-{
-  fwrite (&value, sizeof (value), 1, stdout);
-  FbxConvert_dumpOffset += sizeof (float);
-}
-
-static void
-FbxConvert_EmitPointer (off_t byte)
-{
-  putchar (byte & 0xff);
-  putchar ((byte >> 8) & 0xff);
-  putchar ((byte >> 16) & 0xff);
-  putchar ((byte >> 24) & 0xff);
-
-  FbxConvert_dumpOffset += 4;
-}
-
-static void
-FbxConvert_Align (void)
-{
-  while (FbxConvert_dumpOffset & 0x3)
-    FbxConvert_EmitByte (0xaa);
-}
-
-static off_t
-FbxConvert_EmitVertexBuffer (const fbx_mesh &mesh)
+FbxConvert_EmitVertexBuffer (FILE *output, const fbx_mesh &mesh)
 {
   size_t i, vertexCount;
-  off_t result;
+
+  fprintf (output, "(vertex-buffer");
 
   vertexCount = mesh.xyz.size () / 3;
 
   assert (vertexCount * 2 == mesh.uv.size ());
 
-  FbxConvert_Align ();
-
-  result = FbxConvert_dumpOffset;
-
   if (!mesh.weights.size ())
     {
-      assert (!mesh.bones.size ());
-
-      FbxConvert_EmitU16 (0x0000); /* Vertex format */
-      FbxConvert_EmitU16 (vertexCount);
+      fprintf (output, " data:data(");
 
       for (i = 0; i < vertexCount; ++i)
         {
-          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 0]);
-          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 1]);
-          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 2]);
-          FbxConvert_EmitFloat (mesh.uv[i * 3 + 0]);
-          FbxConvert_EmitFloat (mesh.uv[i * 3 + 1]);
+          FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 0]);
+          FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 1]);
+          FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 2]);
+          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 0]);
+          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 1]);
         }
+
+      fprintf (output, " )");
     }
   else
     {
       assert (vertexCount * 4 == mesh.bones.size ());
       assert (mesh.weights.size () == mesh.bones.size ());
 
-      FbxConvert_EmitU16 (0x0001); /* Vertex format */
-      FbxConvert_EmitU16 (vertexCount);
+      fprintf (output, " data:data(");
 
       for (i = 0; i < vertexCount; ++i)
         {
-          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 0]);
-          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 1]);
-          FbxConvert_EmitFloat (mesh.xyz[i * 3 + 2]);
-          FbxConvert_EmitFloat (mesh.uv[i * 3 + 0]);
-          FbxConvert_EmitFloat (mesh.uv[i * 3 + 1]);
+          FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 0]);
+          FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 1]);
+          FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 2]);
+          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 0]);
+          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 1]);
 
-          FbxConvert_EmitByte (mesh.weights[i * 4 + 0]);
-          FbxConvert_EmitByte (mesh.weights[i * 4 + 1]);
-          FbxConvert_EmitByte (mesh.weights[i * 4 + 2]);
-          FbxConvert_EmitByte (mesh.weights[i * 4 + 3]);
-          FbxConvert_EmitByte (mesh.bones[i * 4 + 0]);
-          FbxConvert_EmitByte (mesh.bones[i * 4 + 1]);
-          FbxConvert_EmitByte (mesh.bones[i * 4 + 2]);
-          FbxConvert_EmitByte (mesh.bones[i * 4 + 3]);
+          FbxConvert_EmitByte (output, mesh.weights[i * 4 + 0]);
+          FbxConvert_EmitByte (output, mesh.weights[i * 4 + 1]);
+          FbxConvert_EmitByte (output, mesh.weights[i * 4 + 2]);
+          FbxConvert_EmitByte (output, mesh.weights[i * 4 + 3]);
+          FbxConvert_EmitByte (output, mesh.bones[i * 4 + 0]);
+          FbxConvert_EmitByte (output, mesh.bones[i * 4 + 1]);
+          FbxConvert_EmitByte (output, mesh.bones[i * 4 + 2]);
+          FbxConvert_EmitByte (output, mesh.bones[i * 4 + 3]);
         }
+
+      fprintf (output, ")");
     }
 
-  return result;
+  fprintf (output, ")");
 }
 
-static off_t
-FbxConvert_EmitIndexBuffer (const fbx_mesh &mesh)
+static void
+FbxConvert_EmitIndexBuffer (FILE *output, const fbx_mesh &mesh)
 {
-  off_t result;
-
-  FbxConvert_Align ();
-
-  result = FbxConvert_dumpOffset;
-
-  FbxConvert_EmitU32 (mesh.indices.size());
+  fprintf (output, "(index-buffer");
+  fprintf (output, " data:data(");
 
   for (auto index : mesh.indices)
-    FbxConvert_EmitU16 (index);
+    FbxConvert_EmitU16 (output, index);
 
-  return result;
+  fprintf (output, ")");
+  fprintf (output, ")");
 }
 
-static off_t
-FbxConvert_EmitString (const char *string)
-{
-  off_t result;
-
-  result = FbxConvert_dumpOffset;
-
-  while (*string)
-    FbxConvert_EmitByte (*string++);
-
-  FbxConvert_EmitByte (0);
-
-  return result;
-}
-
-static off_t
-FbxConvert_EmitMesh (const fbx_mesh &mesh, off_t nextMesh)
+static void
+FbxConvert_EmitMesh (FILE *output, const fbx_mesh &mesh)
 {
   size_t i;
-  off_t vertexBufferOffset, indexBufferOffset, diffuseTextureNameOffset, result;
 
-  diffuseTextureNameOffset = FbxConvert_EmitString (mesh.diffuseTexture.c_str ());
-  vertexBufferOffset = FbxConvert_EmitVertexBuffer (mesh);
-  indexBufferOffset = FbxConvert_EmitIndexBuffer (mesh);
+  fprintf (output, "(mesh");
+  fprintf (output, " diffuse-texture:(texture-2d URI:\"%s\")", mesh.diffuseTexture.c_str ());
+  fprintf (output, " vertex-buffer:");
+  FbxConvert_EmitVertexBuffer (output, mesh);
+  fprintf (output, " index-buffer:");
+  FbxConvert_EmitIndexBuffer (output, mesh);
+  fprintf (output, " index-count:%u", (unsigned int) mesh.indices.size ());
 
-  FbxConvert_Align ();
-
-  result = FbxConvert_dumpOffset;
-
-  FbxConvert_EmitPointer (nextMesh);
+  fprintf (output, " matrix:(matrix data:data(");
   for (i = 0; i < 16; ++i)
-    FbxConvert_EmitFloat (mesh.matrix.v[i]);
-  FbxConvert_EmitPointer (diffuseTextureNameOffset);
-  FbxConvert_EmitPointer (vertexBufferOffset);
-  FbxConvert_EmitPointer (indexBufferOffset);
+    FbxConvert_EmitFloat (output, mesh.matrix.v[i]);
+  fprintf (output, "))");
 
-  return result;
+  if (mesh.bindPose.size ())
+    {
+      fprintf (output, " bind-pose:data(");
+      for (float v : mesh.bindPose)
+        FbxConvert_EmitFloat (output, v);
+      fprintf (output, ")");
+    }
+
+  fprintf (output, ")");
 }
 
-static off_t
-FbxConvert_EmitFrame (const fbx_frame &frame)
+static void
+FbxConvert_EmitFrame (FILE *output, const fbx_frame &frame)
 {
-  off_t result;
-
-  result = FbxConvert_dumpOffset;
-
-  for (auto v : frame.pose)
-    FbxConvert_EmitFloat (v);
-
-  return result;
+  for (float v : frame.pose)
+    FbxConvert_EmitFloat (output, v);
 }
 
-static off_t
-FbxConvert_EmitTake (const fbx_take &take, off_t nextTake)
+static void
+FbxConvert_EmitTake (FILE *output, const fbx_take &take)
 {
-  off_t takeNameOffset, result;
+  if (take.frames.empty ())
+    return;
 
-  takeNameOffset = FbxConvert_EmitString (take.name.c_str ());
+  if (take.frames.front ().pose.empty ())
+    return;
 
-  FbxConvert_Align ();
+  /* XXX: Escape backslashes */
 
-  result = FbxConvert_dumpOffset;
-
-  FbxConvert_EmitPointer (nextTake);
-  FbxConvert_EmitPointer (takeNameOffset);
-  FbxConvert_EmitFloat (take.interval);
-  FbxConvert_EmitU32 (take.frames.size ());
+  fprintf (output, "(take");
+  fprintf (output, " name:\"%s\"", take.name.c_str ());
+  fprintf (output, " interval:%.3g", take.interval);
+  fprintf (output, " frames:data(");
 
   for (auto frame : take.frames)
-    FbxConvert_EmitFrame (frame);
+    FbxConvert_EmitFrame (output, frame);
 
-  return result;
+  fprintf (output, " )"); /* frames */
+  fprintf (output, ")"); /* take */
 }
 
 void
 FbxConvertExportBinary (fbx_model &model)
 {
-  off_t nextMesh = 0, nextTake = 0;
+  FILE *pipe;
 
-  FbxConvert_EmitU32 (0xbad6e2aa);
+  pipe = popen (BINDIR "/bm-script-convert", "w");
 
   for (auto mesh : model.meshes)
-    nextMesh = FbxConvert_EmitMesh (mesh, nextMesh);
+    FbxConvert_EmitMesh (pipe, mesh);
 
   for (auto take : model.takes)
-    nextTake = FbxConvert_EmitTake (take, nextTake);
-
-  FbxConvert_Align ();
-
-  FbxConvert_EmitPointer (nextTake);
-  FbxConvert_EmitPointer (nextMesh);
+    FbxConvert_EmitTake (pipe, take);
 }

@@ -15,13 +15,23 @@
 static size_t SCRIPT_dumpOffset;
 
 static void
-script_dump_statement (struct ScriptStatement *statement);
+SCRIPT_EmitStatement (struct ScriptStatement *statement);
 
 static void
 SCRIPT_EmitByte (unsigned int byte)
 {
   putchar (byte & 0xff);
   SCRIPT_dumpOffset++;
+}
+
+static void
+SCRIPT_EmitU32 (unsigned int u32)
+{
+  putchar (u32 & 0xff);
+  putchar ((u32 >> 8) & 0xff);
+  putchar ((u32 >> 16) & 0xff);
+  putchar ((u32 >> 24) & 0xff);
+  SCRIPT_dumpOffset += 4;
 }
 
 static void
@@ -33,6 +43,14 @@ SCRIPT_EmitPointer (off_t byte)
   putchar ((byte >> 24) & 0xff);
 
   SCRIPT_dumpOffset += 4;
+}
+
+
+static void
+SCRIPT_Align (unsigned mask)
+{
+  while (SCRIPT_dumpOffset & mask)
+    SCRIPT_EmitByte (0xaa);
 }
 
 static void
@@ -88,6 +106,46 @@ SCRIPT_EmitString (const char *string)
   SCRIPT_EmitByte (0);
 }
 
+static off_t
+SCRIPT_EmitBinary (const char *string)
+{
+  off_t result;
+  size_t i, length = 0;
+  const unsigned char *c;
+
+  length = strlen (string) / 2;
+
+  if (!(length & 3))
+    SCRIPT_Align (3);
+  else if (!(length & 1))
+    SCRIPT_Align (1);
+
+  result = SCRIPT_dumpOffset;
+
+  SCRIPT_EmitByte (ScriptVMExpressionBinary);
+  SCRIPT_EmitByte (0);
+  SCRIPT_EmitByte (0);
+  SCRIPT_EmitByte (0);
+  SCRIPT_EmitU32 (length);
+
+  c = (const unsigned char *) string;
+
+  for (i = 0; i < length; ++i, c += 2)
+    {
+      static const unsigned char helper[] =
+        {
+          0, 10, 11, 12, 13, 14, 15,  0,
+          0,  0,  0,  0,  0,  0,  0,  0,
+          0,  1,  2,  3,  4,  5,  6,  7,
+          8,  9,  0,  0,  0,  0,  0,  0
+        };
+
+      SCRIPT_EmitByte ((helper[c[0] & 0x1f] << 4) | helper[c[1] & 0x1f]);
+    }
+
+  return result;
+}
+
 static void
 SCRIPT_EmitIdentifier (const char *string)
 {
@@ -99,7 +157,7 @@ SCRIPT_EmitIdentifier (const char *string)
 }
 
 static void
-script_dump_expression (struct ScriptExpression *expression)
+SCRIPT_EmitExpression (struct ScriptExpression *expression)
 {
   if (expression->offset)
     return;
@@ -120,6 +178,12 @@ script_dump_expression (struct ScriptExpression *expression)
 
       break;
 
+    case ScriptExpressionBinary:
+
+      expression->offset = SCRIPT_EmitBinary (expression->lhs.binary);
+
+      break;
+
     case ScriptExpressionIdentifier:
 
       expression->offset = SCRIPT_dumpOffset;
@@ -129,7 +193,7 @@ script_dump_expression (struct ScriptExpression *expression)
 
     case ScriptExpressionStatement:
 
-      script_dump_statement (expression->lhs.statement);
+      SCRIPT_EmitStatement (expression->lhs.statement);
 
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionStatement);
@@ -139,7 +203,7 @@ script_dump_expression (struct ScriptExpression *expression)
 
     case ScriptExpressionParen:
 
-      script_dump_expression (expression->lhs.expression);
+      SCRIPT_EmitExpression (expression->lhs.expression);
 
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionParen);
@@ -147,10 +211,20 @@ script_dump_expression (struct ScriptExpression *expression)
 
       break;
 
+    case ScriptExpressionNegative:
+
+      SCRIPT_EmitExpression (expression->lhs.expression);
+
+      expression->offset = SCRIPT_dumpOffset;
+      SCRIPT_EmitByte (ScriptVMExpressionNegative);
+      SCRIPT_EmitPointer (expression->lhs.expression->offset);
+
+      break;
+
     case ScriptExpressionAdd:
 
-      script_dump_expression (expression->lhs.expression);
-      script_dump_expression (expression->rhs);
+      SCRIPT_EmitExpression (expression->lhs.expression);
+      SCRIPT_EmitExpression (expression->rhs);
 
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionAdd);
@@ -161,8 +235,8 @@ script_dump_expression (struct ScriptExpression *expression)
 
     case ScriptExpressionSubtract:
 
-      script_dump_expression (expression->lhs.expression);
-      script_dump_expression (expression->rhs);
+      SCRIPT_EmitExpression (expression->lhs.expression);
+      SCRIPT_EmitExpression (expression->rhs);
 
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionSubtract);
@@ -173,8 +247,8 @@ script_dump_expression (struct ScriptExpression *expression)
 
     case ScriptExpressionMultiply:
 
-      script_dump_expression (expression->lhs.expression);
-      script_dump_expression (expression->rhs);
+      SCRIPT_EmitExpression (expression->lhs.expression);
+      SCRIPT_EmitExpression (expression->rhs);
 
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionMultiply);
@@ -185,8 +259,8 @@ script_dump_expression (struct ScriptExpression *expression)
 
     case ScriptExpressionDivide:
 
-      script_dump_expression (expression->lhs.expression);
-      script_dump_expression (expression->rhs);
+      SCRIPT_EmitExpression (expression->lhs.expression);
+      SCRIPT_EmitExpression (expression->rhs);
 
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionDivide);
@@ -198,7 +272,7 @@ script_dump_expression (struct ScriptExpression *expression)
 }
 
 static void
-script_dump_statement (struct ScriptStatement *statement)
+SCRIPT_EmitStatement (struct ScriptStatement *statement)
 {
   struct ScriptParameter *parameter;
 
@@ -206,10 +280,10 @@ script_dump_statement (struct ScriptStatement *statement)
     return;
 
   if (statement->next)
-    script_dump_statement (statement->next);
+    SCRIPT_EmitStatement (statement->next);
 
   for (parameter = statement->parameters; parameter; parameter = parameter->next)
-    script_dump_expression (parameter->expression);
+    SCRIPT_EmitExpression (parameter->expression);
 
   statement->offset = SCRIPT_dumpOffset;
 
@@ -246,7 +320,7 @@ script_dump_binary (struct script_parse_context *context)
 
   if (context->statements)
     {
-      script_dump_statement (context->statements);
+      SCRIPT_EmitStatement (context->statements);
 
       SCRIPT_EmitPointer (context->statements->offset);
     }

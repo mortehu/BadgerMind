@@ -6,9 +6,11 @@ enum ScriptVMExpressionType
   ScriptVMExpressionU32,
   ScriptVMExpressionFloat,
   ScriptVMExpressionString,
+  ScriptVMExpressionBinary,
   ScriptVMExpressionMat4x4,
 
   ScriptVMExpressionParen,
+  ScriptVMExpressionNegative,
   ScriptVMExpressionIdentifier,
   ScriptVMExpressionStatement,
   ScriptVMExpressionAdd,

@@ -79,10 +79,21 @@ main (int argc, char **argv)
       return EXIT_SUCCESS;
     }
 
-  if (optind + 1 != argc)
-    err (EX_USAGE, "Usage: %s [OPTION]... SCRIPT", argv[0]);
+  if (optind + 1 < argc)
+    err (EX_USAGE, "Usage: %s [OPTION]... [SCRIPT]", argv[0]);
+  else if (optind == argc)
+    script_parse_file (&context, stdin);
+  else
+    {
+      FILE *input;
 
-  script_parse_file (&context, argv[optind]);
+      if(!(input = fopen(argv[optind], "r")))
+        err (EXIT_FAILURE, "%s: failed to open `%s' for reading", argv[0], argv[optind]);
+
+      script_parse_file (&context, input);
+
+      fclose (input);
+    }
 
   if (!strcmp (Script_format, "binary"))
     script_dump_binary (&context);

@@ -45,6 +45,12 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
 
       break;
 
+    case ScriptExpressionBinary:
+
+      printf ("<Binary Data>");
+
+      break;
+
     case ScriptExpressionIdentifier:
 
       printf ("%s", expression->lhs.numeric);
@@ -94,6 +100,13 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
       script_dump_expression (expression->lhs.expression, 0, level + 1);
       printf (" / ");
       script_dump_expression (expression->rhs, 0, level + 1);
+
+      break;
+
+    case ScriptExpressionNegative:
+
+      printf ("-");
+      script_dump_expression (expression->lhs.expression, 0, level + 1);
 
       break;
     }

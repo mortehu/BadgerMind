@@ -15,6 +15,9 @@ unsigned int line = 0;
 
 static int
 stringliteral(yyscan_t yyscanner);
+
+static int
+binaryliteral(yyscan_t yyscanner);
 %}
 %option reentrant
 %option noyywrap
@@ -26,6 +29,7 @@ stringliteral(yyscan_t yyscanner);
 -?[0-9]*(\.[0-9]+)?([eE][+-]?[0-9]+)? { yylval->p = arena_strdup(yyextra, yytext); character += yyleng; return Numeric; }
 
 \"                     { return stringliteral(yyscanner); }
+data\(                 { return binaryliteral(yyscanner); }
 
 [A-Za-z-][A-za-z0-9.-]* { yylval->p = arena_strdup(yyextra, yytext); character += yyleng; return Identifier; }
 
@@ -70,15 +74,43 @@ stringliteral(yyscan_t yyscanner)
   return StringLiteral;
 }
 
+static int
+binaryliteral(yyscan_t yyscanner)
+{
+  struct yyguts_t *yyg = (struct yyguts_t *) yyscanner;
+  int ch;
+  ARRAY(char) result;
+
+  ARRAY_INIT(&result);
+
+  while(EOF != (ch = input(yyscanner)))
+  {
+    if(ch == ')')
+      break;
+
+    if(ch == '\n')
+      {
+        ++line;
+        character = 1;
+      }
+
+    if (!isspace (ch))
+      ARRAY_ADD(&result, ch);
+  }
+
+  yylval->p = arena_strndup(yyextra, &ARRAY_GET(&result, 0),
+                            ARRAY_COUNT(&result));
+
+  ARRAY_FREE(&result);
+
+  return BinaryLiteral;
+}
+
 int
-script_parse_file(struct script_parse_context *context, const char *path)
+script_parse_file(struct script_parse_context *context, FILE *file)
 {
   YY_BUFFER_STATE buf;
-  FILE* file;
   int result = -1;
-
-  if(!(file = fopen(path, "r")))
-    return -1;
 
   memset(context, 0, sizeof(*context));
 
@@ -97,8 +129,6 @@ script_parse_file(struct script_parse_context *context, const char *path)
     result = yyparse(context);
     yy_delete_buffer(buf, context->scanner);
   }
-
-  fclose(file);
 
   yylex_destroy(context->scanner);
 

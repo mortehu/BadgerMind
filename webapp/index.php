@@ -109,6 +109,10 @@ if (is_dir($path))
       <ul class="directory-listing">
       <?
 
+      if (sizeof (explode('/', $relative_path)) > 1)
+      {
+        ?><li style='margin-bottom: 10px'><a href='..'><img src='/famfamfam/folder.png' alt=''>Parent Directory</a></li><?
+      }
       foreach ($files as $file)
       {
         if ($file[0] == '.')
@@ -130,7 +134,6 @@ if (is_dir($path))
           $icon = '/famfamfam/image.png';
         else if ($extension == 'fbx')
           $icon = '/famfamfam/bricks.png';
-
 
         ?><li><a href='<?=$escaped_name?>'><img src='<?=$icon?>' alt=''><?=$escaped_name?></a></li><?
       }

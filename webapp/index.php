@@ -93,7 +93,21 @@ if (is_dir($path))
 
     if ($method == 'GET' || $method == 'HEAD')
     {
-      ?><ul><?
+      ?>
+      <!DOCTYPE html>
+      <head>
+        <title>Contents of <?=htmlentities($path, ENT_QUOTES, 'utf-8')?></title>
+        <style>
+          body { font-family: sans-serif; }
+          .directory-listing { list-style: none; margin: 0; padding: 0; }
+          .directory-listing img { margin-right: 5px; }
+          .directory-listing li { margin-bottom: 2px; }
+          .directory-listing a { text-decoration: none; }
+          .directory-listing a:hover { text-decoration: underline; }
+        </style>
+      <body>
+      <ul class="directory-listing">
+      <?
 
       foreach ($files as $file)
       {
@@ -102,7 +116,23 @@ if (is_dir($path))
 
         $escaped_name = htmlentities($file, ENT_QUOTES, 'utf-8');
 
-        ?><li><a href='<?=$escaped_name?>'><?=$escaped_name?></a></li><?
+        $full_path = "$path/$file";
+        $icon = '/famfamfam/page.png';
+
+        $extension = strtolower(pathinfo($full_path, PATHINFO_EXTENSION));
+
+        if (is_dir($full_path))
+        {
+          $icon = '/famfamfam/folder.png';
+          $escaped_name .= '/';
+        }
+        else if ($extension == 'png')
+          $icon = '/famfamfam/image.png';
+        else if ($extension == 'fbx')
+          $icon = '/famfamfam/bricks.png';
+
+
+        ?><li><a href='<?=$escaped_name?>'><img src='<?=$icon?>' alt=''><?=$escaped_name?></a></li><?
       }
 
       ?></ul><?

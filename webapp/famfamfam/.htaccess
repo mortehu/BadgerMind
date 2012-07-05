@@ -1,0 +1,5 @@
+ExpiresActive On
+ExpiresByType image/gif A290304000
+ExpiresByType image/png A290304000
+ExpiresByType image/jpg A290304000
+Header set Cache-Control "max-age=290304000, public"

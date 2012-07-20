@@ -58,7 +58,7 @@ SCRIPT_Align (unsigned int bias, unsigned int mask)
 }
 
 static off_t
-SCRIPT_EmitNumeric (const char *numeric)
+SCRIPT_EmitNumeric (const char *numeric, double scale)
 {
   off_t result;
 
@@ -68,27 +68,34 @@ SCRIPT_EmitNumeric (const char *numeric)
       uint32_t v_floatAsU32;
     } v_float;
 
-  int16_t v_longlong;
   char *end;
 
   SCRIPT_Align (1, 3);
 
   result = SCRIPT_dumpOffset;
 
-  v_longlong = strtoll (numeric, &end, 0);
-
-  if (!*end && v_longlong >= 0 && v_longlong <= 0xFFFFFFFF)
+  if (!scale)
     {
-      SCRIPT_EmitByte (ScriptVMExpressionU32);
-      SCRIPT_EmitByte (v_longlong & 0xFF);
-      SCRIPT_EmitByte ((v_longlong >> 8) & 0xFF);
-      SCRIPT_EmitByte ((v_longlong >> 16) & 0xFF);
-      SCRIPT_EmitByte ((v_longlong >> 24) & 0xFF);
+      int16_t v_longlong;
 
-      return result;
+      v_longlong = strtoll (numeric, &end, 0);
+
+      if (!*end && v_longlong >= 0 && v_longlong <= 0xFFFFFFFF)
+        {
+          SCRIPT_EmitByte (ScriptVMExpressionU32);
+          SCRIPT_EmitByte (v_longlong & 0xFF);
+          SCRIPT_EmitByte ((v_longlong >> 8) & 0xFF);
+          SCRIPT_EmitByte ((v_longlong >> 16) & 0xFF);
+          SCRIPT_EmitByte ((v_longlong >> 24) & 0xFF);
+
+          return result;
+        }
     }
 
   v_float.v_float = strtod (numeric, &end);
+
+  if (scale)
+    v_float.v_float *= scale;
 
   assert (!*end);
 
@@ -178,7 +185,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
     {
     case ScriptExpressionNumeric:
 
-      expression->offset = SCRIPT_EmitNumeric (expression->lhs.numeric);
+      expression->offset = SCRIPT_EmitNumeric (expression->lhs.numeric, expression->scale);
 
       break;
 
@@ -219,6 +226,17 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
       SCRIPT_Align (1, 3);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionParen);
+      SCRIPT_EmitPointer (expression->lhs.expression->offset);
+
+      break;
+
+    case ScriptExpressionAbsolute:
+
+      SCRIPT_EmitExpression (expression->lhs.expression);
+
+      SCRIPT_Align (1, 3);
+      expression->offset = SCRIPT_dumpOffset;
+      SCRIPT_EmitByte (ScriptVMExpressionAbsolute);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
 
       break;

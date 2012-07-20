@@ -40,6 +40,7 @@ enum ScriptExpressionType
   ScriptExpressionStatement,
   ScriptExpressionParen,
   ScriptExpressionNegative,
+  ScriptExpressionAbsolute,
 
   /* Binary */
   ScriptExpressionAdd,
@@ -64,6 +65,7 @@ struct ScriptExpression
 
   struct ScriptExpression *rhs;
 
+  double scale;
   off_t offset;
 };
 

@@ -28,6 +28,8 @@ yyerror(YYLTYPE *loc, struct script_parse_context *context, const char *message)
 %}
 %token EOF_
 
+%token MINUS MUL DIV DEGREES
+
 %token Numeric
 %type<p> Numeric
 
@@ -130,6 +132,15 @@ expression
         expr->lhs.numeric = $1;
         $$ = expr;
       }
+    | Numeric DEGREES
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionNumeric;
+        expr->lhs.numeric = $1;
+        expr->scale = 3.14159265358979323846 / 180.0;
+        $$ = expr;
+      }
     | Identifier
       {
         struct ScriptExpression *expr;
@@ -170,6 +181,14 @@ expression
         expr->lhs.expression = $2;
         $$ = expr;
       }
+    | '|' expression '|'
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionAbsolute;
+        expr->lhs.expression = $2;
+        $$ = expr;
+      }
     | expression '+' expression
       {
         struct ScriptExpression *expr;
@@ -179,7 +198,7 @@ expression
         expr->rhs = $3;
         $$ = expr;
       }
-    | expression '-' expression
+    | expression MINUS expression
       {
         struct ScriptExpression *expr;
         ALLOC (expr);
@@ -188,7 +207,7 @@ expression
         expr->rhs = $3;
         $$ = expr;
       }
-    | expression '*' expression
+    | expression MUL expression
       {
         struct ScriptExpression *expr;
         ALLOC (expr);
@@ -197,7 +216,7 @@ expression
         expr->rhs = $3;
         $$ = expr;
       }
-    | expression '/' expression
+    | expression DIV expression
       {
         struct ScriptExpression *expr;
         ALLOC (expr);
@@ -206,7 +225,7 @@ expression
         expr->rhs = $3;
         $$ = expr;
       }
-    | '-' expression %prec UMINUS
+    | MINUS expression %prec UMINUS
       {
         struct ScriptExpression *expr;
         ALLOC (expr);

@@ -31,13 +31,19 @@ binaryliteral(yyscan_t yyscanner);
 \"                     { return stringliteral(yyscanner); }
 data\(                 { return binaryliteral(yyscanner); }
 
-[A-Za-z-][A-za-z0-9.-]* { yylval->p = arena_strdup(yyextra, yytext); character += yyleng; return Identifier; }
+−                      { return MINUS; }
+×                      { return MUL; }
+÷                      { return DIV; }
+°                      { return DEGREES; }
 
 [ \t\r\026]+           { character += yyleng; }
 
 \n                     { ++line; character = 1; }
 
 \357\273\277           { ; } 
+
+[A-Za-z\x80-\xFF-][A-za-z0-9\x80-\xFF.-]* { yylval->p = arena_strdup(yyextra, yytext); character += yyleng; return Identifier; }
+
 .                      { ++character; return *yytext; }
 
 <<EOF>>                { return EOF_; }

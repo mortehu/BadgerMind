@@ -71,6 +71,14 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
 
       break;
 
+    case ScriptExpressionAbsolute:
+
+      printf ("|");
+      script_dump_expression (expression->lhs.expression, 0, level + 1);
+      printf ("|");
+
+      break;
+
     case ScriptExpressionAdd:
 
       script_dump_expression (expression->lhs.expression, 0, level + 1);

@@ -20,6 +20,18 @@ if ($method == 'OPTIONS')
 header ('DAV: 1, 3, extended-mkcol, 2');
 
 require_once('lib/path.php');
+require_once('lib/git.php');
+
+$email_addresses = array('mortehu' => 'Morten Hustveit <morten.hustveit@gmail.com>',
+                         'flemm' => 'Tollef Roe Steen <tollef.steen@hihm.no>');
+
+if (isset($_SERVER['REMOTE_USER'])
+    && isset($email_addresses[$_SERVER['REMOTE_USER']]))
+{
+  $email_address = $email_addresses[$_SERVER['REMOTE_USER']];
+}
+else
+  $email_address = "";
 
 function print_file_response($fullpath, $uri)
 {
@@ -77,6 +89,74 @@ function print_file_response($fullpath, $uri)
   echo "</d:response>";
 }
 
+$git_root = git_root(pathinfo($path, PATHINFO_DIRNAME)) . '/';
+
+if (strlen($git_root) > strlen($root_path)
+    && !strncmp($root_path, $git_root, strlen($root_path)))
+{
+  $git_prefix = substr($path, strlen($git_root));
+}
+else
+{
+  unset($git_root);
+}
+
+if ($method == 'POST')
+{
+  switch ($_POST['action'])
+  {
+  case 'add':
+
+    git_add($git_root, $git_prefix);
+
+    header('HTTP/1.1 303 See Other');
+    header("Location: http://{$_SERVER['HTTP_HOST']}/" . pathinfo($relative_path, PATHINFO_DIRNAME) . "/");
+
+    break;
+
+  case 'delete':
+
+    git_delete($git_root, $git_prefix);
+
+    header('HTTP/1.1 303 See Other');
+    header("Location: http://{$_SERVER['HTTP_HOST']}/" . pathinfo($relative_path, PATHINFO_DIRNAME) . "/");
+
+    break;
+
+  case 'commit':
+
+    if (strlen(trim($_POST['shortlog'])) < 3)
+    {
+      header ('Content-Type: text/plain');
+      echo "You need to provide a meaningful shortlog";
+
+      exit;
+    }
+
+    if (!preg_match('/.+ <.*@.*>$/', $_POST['author']))
+    {
+      header ('Content-Type: text/plain');
+      echo "You must provide an author on the form Name <name@example.org>";
+
+      exit;
+    }
+
+    if (strlen($_POST['details']))
+      $message = trim($_POST['shortlog']) . "\n\n" . $_POST['details'];
+    else
+      $message = trim($_POST['shortlog']);
+
+    git_commit($git_root, $_POST['paths'], $message, $_POST['author']);
+
+    header('HTTP/1.1 303 See Other');
+    header("Location: http://{$_SERVER['HTTP_HOST']}/" . pathinfo($relative_path, PATHINFO_DIRNAME) . "/");
+
+    break;
+  }
+
+  exit;
+}
+
 if (is_dir($path))
 {
   $path = rtrim($path, '/') . '/';
@@ -91,6 +171,24 @@ if (is_dir($path))
   {
     $files = scandir($path);
 
+    $pending_changes = array();
+
+    if (isset($git_root))
+    {
+      $git_status = git_status($path);
+
+      foreach ($git_status as $file => $gs)
+      {
+        if ($gs != '??' && $gs != '!!')
+          $pending_changes[$file] = $gs;
+      }
+    }
+    else
+    {
+      $git_status = array();
+      $git_prefix = "";
+    }
+
     if ($method == 'GET' || $method == 'HEAD')
     {
       ?>
@@ -99,20 +197,28 @@ if (is_dir($path))
         <title>Contents of <?=htmlentities($path, ENT_QUOTES, 'utf-8')?></title>
         <style>
           body { font-family: sans-serif; }
-          .directory-listing { list-style: none; margin: 0; padding: 0; }
-          .directory-listing img { margin-right: 5px; }
-          .directory-listing li { margin-bottom: 2px; }
+          .directory-listing { border-spacing: 0; }
+          .directory-listing td { padding: 0; }
           .directory-listing a { text-decoration: none; }
           .directory-listing a:hover { text-decoration: underline; }
+          .n { text-align: right; }
+          td.text { padding: 0 5px; }
+          ul.pending-changes { list-style: none; margin-left: 0; padding-left: 15px; }
+          ul.pending-changes li { margin-left: 0; padding-left: 0; }
         </style>
       <body>
-      <ul class="directory-listing">
+      <table class="directory-listing">
       <?
 
       if (sizeof (explode('/', $relative_path)) > 1)
       {
-        ?><li style='margin-bottom: 10px'><a href='..'><img src='/famfamfam/folder.png' alt=''>Parent Directory</a></li><?
+        ?>
+        <tr>
+          <td><img src='/famfamfam/folder.png' alt=''>
+          <td class='text'><a href='..'>Parent Directory</a>
+        <?
       }
+
       foreach ($files as $file)
       {
         if ($file[0] == '.')
@@ -121,24 +227,123 @@ if (is_dir($path))
         $escaped_name = htmlentities($file, ENT_QUOTES, 'utf-8');
 
         $full_path = "$path/$file";
+        $git_path = "{$git_prefix}{$file}";
         $icon = '/famfamfam/page.png';
 
         $extension = strtolower(pathinfo($full_path, PATHINFO_EXTENSION));
 
-        if (is_dir($full_path))
+        if ($is_dir = is_dir($full_path))
         {
           $icon = '/famfamfam/folder.png';
           $escaped_name .= '/';
+          $git_path .= '/';
         }
         else if ($extension == 'png')
           $icon = '/famfamfam/image.png';
         else if ($extension == 'fbx')
           $icon = '/famfamfam/bricks.png';
 
-        ?><li><a href='<?=$escaped_name?>'><img src='<?=$icon?>' alt=''><?=$escaped_name?></a></li><?
+        if (array_key_exists($git_path, $git_status))
+        {
+          $gs = $git_status[$git_path];
+          unset ($git_status[$git_path]);
+        }
+        else
+          $gs = "";
+        ?>
+        <tr>
+          <td><img src='<?=$icon?>' alt=''>
+          <td class='text'><a href='<?=$escaped_name?>'><?=$escaped_name?></a>
+          <td class='n text'><?=number_format(filesize($full_path))?>
+            <?
+            $can_add = false;
+            $can_delete = false;
+            $can_revert = false;
+            $is_modified = false;
+            $extra = "";
+
+            switch ($gs)
+            {
+            case '??':
+
+              $can_add = true;
+
+              break;
+
+            case false:
+
+              if (!$is_dir)
+                $can_delete = true;
+
+              break;
+
+            case ' M':
+
+              $is_modified = true;
+              $can_revert = true;
+
+            case '!!':
+
+              break;
+
+            default:
+
+              $extra = git_status_explain($gs);
+            }
+          ?>
+          <td>
+            <? if ($is_modified): ?>
+              <img src='/famfamfam/page_edit.png' name='action' value='add' alt='Submit' title='File is modified'>
+            <? endif ?>
+          <td>
+            <? if ($can_add): ?>
+              <form method='post' action='<?=$escaped_name?>'>
+                <input type='image' src='/famfamfam/page_add.png' name='action' value='add' alt='Submit' title='Add to version control'>
+              </form>
+            <? endif ?>
+          <td>
+            <? if ($can_delete): ?>
+              <form method='post' action='<?=$escaped_name?>'>
+                <input type='image' src='/famfamfam/page_delete.png' name='action' value='delete' alt='Submit' title='Delete'>
+              </form>
+            <? endif ?>
+          <td>
+            <? if ($can_revert): ?>
+              <form method='post' action='<?=$escaped_name?>'>
+                <input type='image' src='/famfamfam/page_refresh.png' name='action' value='revert' alt='Submit' title='Revert changes'>
+              </form>
+            <? endif ?>
+          <td>
+            <?=$extra?>
+          <?
       }
 
-      ?></ul><?
+      ?></table><?
+
+      if (sizeof($pending_changes))
+      {
+        $icon_for_change = array('A' => '/famfamfam/page_add.png', 'D' => '/famfamfam/page_delete.png', ' ' => '/famfamfam/page_edit.png');
+        ?>
+        <h2>Commit</h2>
+        <form action='<?=htmlentities($_SERVER['REQUEST_URI'], ENT_QUOTES, 'utf-8')?>' method='post'>
+          <input type='hidden' name='action' value='commit'>
+          <p>Pending Changes:</p>
+          <ul class='pending-changes'>
+          <? foreach ($pending_changes as $file => $gs): ?>
+            <li><label><input type='checkbox' name='paths[]' value='<?=htmlentities($file, ENT_QUOTES, 'utf-8')?>'>
+              <img src='<?=$icon_for_change[$gs[0]]?>'> <?=htmlentities($file, ENT_QUOTES, 'utf-8')?></li>
+          <? endforeach ?>
+          </ul>
+          <p>Author:<br>
+          <input type='text' name='author' size='50' value='<?=htmlentities($email_address, ENT_QUOTES, 'utf-8')?>'></p>
+          <p>Commit Summary (max 50 characters, use present tense):<br>
+          <input type='text' name='shortlog' size='50' maxlength='50'></p>
+          <p>Commit Explanation:<br>
+          <textarea name='details' rows='6' cols='72' wrap='hard'></textarea></p>
+          <p><input type='submit' value='Commit'></p>
+        </form>
+        <?
+      }
     }
     else if ($method == 'PROPFIND')
     {

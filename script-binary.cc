@@ -9,10 +9,15 @@
 #include <string.h>
 #include <sysexits.h>
 
+#include <vector>
+
 #include "script.h"
 #include "script-vm.h"
 
+static std::vector<uint32_t> script_pointerOffsets;
+
 static size_t SCRIPT_dumpOffset;
+static int SCRIPT_64bit, SCRIPT_pointerAlign;
 
 static void
 SCRIPT_EmitStatement (struct ScriptStatement *statement);
@@ -37,18 +42,55 @@ SCRIPT_EmitU32 (unsigned int u32)
 }
 
 static void
-SCRIPT_EmitPointer (off_t byte)
+SCRIPT_EmitVarInt (unsigned int u32)
+{
+  if (u32 > (0x7f << 14))
+    {
+      putchar (((u32 >> 21) & 0x7f) | 0x80);
+      ++SCRIPT_dumpOffset;
+    }
+
+  if (u32 > (0x7f << 7))
+    {
+      putchar (((u32 >> 14) & 0x7f) | 0x80);
+      ++SCRIPT_dumpOffset;
+    }
+
+  if (u32 > 0x7f)
+    {
+      putchar (((u32 >> 7) & 0x7f) | 0x80);
+      ++SCRIPT_dumpOffset;
+    }
+
+  putchar (u32 & 0x7f);
+  ++SCRIPT_dumpOffset;
+}
+
+static void
+SCRIPT_EmitPointer (off_t ptr)
 {
   assert (!(SCRIPT_dumpOffset & 3));
 
-  putchar (byte & 0xff);
-  putchar ((byte >> 8) & 0xff);
-  putchar ((byte >> 16) & 0xff);
-  putchar ((byte >> 24) & 0xff);
+  if (ptr)
+    script_pointerOffsets.push_back (SCRIPT_dumpOffset);
+
+  putchar (ptr & 0xff);
+  putchar ((ptr >> 8) & 0xff);
+  putchar ((ptr >> 16) & 0xff);
+  putchar ((ptr >> 24) & 0xff);
 
   SCRIPT_dumpOffset += 4;
-}
 
+  if (SCRIPT_64bit)
+    {
+      putchar ((ptr >> 32) & 0xff);
+      putchar ((ptr >> 40) & 0xff);
+      putchar ((ptr >> 48) & 0xff);
+      putchar ((ptr >> 56) & 0xff);
+
+      SCRIPT_dumpOffset += 4;
+    }
+}
 
 static void
 SCRIPT_Align (unsigned int bias, unsigned int mask)
@@ -80,7 +122,7 @@ SCRIPT_EmitNumeric (const char *numeric, double scale)
 
       v_longlong = strtoll (numeric, &end, 0);
 
-      if (!*end && v_longlong >= 0 && v_longlong <= 0xFFFFFFFF)
+      if (!*end && v_longlong >= 0 && v_longlong <= 0x7FFFFFFF)
         {
           SCRIPT_EmitByte (ScriptVMExpressionU32);
           SCRIPT_EmitByte (v_longlong & 0xFF);
@@ -212,7 +254,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
 
       SCRIPT_EmitStatement (expression->lhs.statement);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionStatement);
       SCRIPT_EmitPointer (expression->lhs.statement->offset);
@@ -223,7 +265,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
 
       SCRIPT_EmitExpression (expression->lhs.expression);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionParen);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -234,7 +276,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
 
       SCRIPT_EmitExpression (expression->lhs.expression);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionAbsolute);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -245,7 +287,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
 
       SCRIPT_EmitExpression (expression->lhs.expression);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionNegative);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -257,7 +299,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
       SCRIPT_EmitExpression (expression->lhs.expression);
       SCRIPT_EmitExpression (expression->rhs);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionAdd);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -270,7 +312,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
       SCRIPT_EmitExpression (expression->lhs.expression);
       SCRIPT_EmitExpression (expression->rhs);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionSubtract);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -283,7 +325,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
       SCRIPT_EmitExpression (expression->lhs.expression);
       SCRIPT_EmitExpression (expression->rhs);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionMultiply);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -296,7 +338,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
       SCRIPT_EmitExpression (expression->lhs.expression);
       SCRIPT_EmitExpression (expression->rhs);
 
-      SCRIPT_Align (1, 3);
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitByte (ScriptVMExpressionDivide);
       SCRIPT_EmitPointer (expression->lhs.expression->offset);
@@ -331,7 +373,7 @@ SCRIPT_EmitStatement (struct ScriptStatement *statement)
     }
 
   SCRIPT_EmitByte (0);
-  SCRIPT_Align (0, 3);
+  SCRIPT_Align (0, SCRIPT_pointerAlign);
 
   for (parameter = statement->parameters; parameter; parameter = parameter->next)
     {
@@ -348,17 +390,50 @@ SCRIPT_EmitStatement (struct ScriptStatement *statement)
 }
 
 void
-script_dump_binary (struct script_parse_context *context)
+SCRIPT_EmitPointerTable (void)
 {
+  uint32_t previous = 0;
+
+  for (auto offset : script_pointerOffsets)
+    {
+      assert (offset != previous);
+      assert (!(offset & SCRIPT_pointerAlign));
+
+      SCRIPT_EmitVarInt ((offset - previous) / (SCRIPT_pointerAlign + 1));
+      previous = offset;
+    }
+
+  SCRIPT_EmitByte (0);
+}
+
+void
+script_dump_binary (struct script_parse_context *context, int ptrsize)
+{
+  size_t pointerTableOffset;
+  script_pointerOffsets.clear ();
+
   SCRIPT_EmitByte (0xBA);
   SCRIPT_EmitByte (0xD9);
   SCRIPT_EmitByte (0xE2);
   SCRIPT_EmitByte (0x01);
 
-  if (context->statements)
-    {
-      SCRIPT_EmitStatement (context->statements);
+  if (!context->statements)
+    return;
 
-      SCRIPT_EmitPointer (context->statements->offset);
-    }
+  if (0 != (SCRIPT_64bit = (ptrsize == 64)))
+    SCRIPT_pointerAlign = 7;
+  else
+    SCRIPT_pointerAlign = 3;
+
+  SCRIPT_EmitStatement (context->statements);
+
+  SCRIPT_Align (0, SCRIPT_pointerAlign);
+
+  pointerTableOffset = SCRIPT_dumpOffset;
+  SCRIPT_EmitPointerTable ();
+
+  SCRIPT_Align (0, SCRIPT_pointerAlign);
+  SCRIPT_EmitPointer (pointerTableOffset);
+
+  SCRIPT_EmitPointer (context->statements->offset);
 }

@@ -46,6 +46,6 @@ if (false === ($mtime = filemtime($path)))
     vTextureCoord = aTextureCoord;
   }
   </script>
-<body onload='VIEWER_Init("<?=$_SERVER['REQUEST_URI']?>?media-type=application/json&amp;mtime=<?=$mtime?>")'>
+<body onload='VIEWER_Init("<?=$_SERVER['REQUEST_URI']?>?media-type=application/json&amp;mtime=<?=$mtime?>&amp;v=5")'>
   <canvas id='game-canvas' width=800 height=600 style='width: 800px; height: 600px; border: 2px solid #555; display: block; margin: 20px auto'></canvas>
   <div id='help'>Q/A = move closer/further away.  W/S = move up/down.  Yes, the controls are terrible.</div>

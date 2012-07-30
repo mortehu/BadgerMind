@@ -11,6 +11,7 @@
 *.tab
 *~
 .deps
+.digestpw
 .libs
 /Makefile.in
 /aclocal.m4

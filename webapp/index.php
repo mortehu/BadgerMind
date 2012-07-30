@@ -497,9 +497,11 @@ else
 
 $conversions =
   array('application/vnd.autodesk.fbx application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-fbx-convert',
+        'application/vnd.autodesk.fbx application/vnd.badgermind.sd.binary64.0' => '/usr/local/bin/bm-fbx-convert --pointer-size=64',
         'application/vnd.autodesk.fbx application/json' => '/usr/local/bin/bm-fbx-convert --format=json',
         'application/vnd.autodesk.fbx text/html' => 'model-webgl-wrapper.php',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert',
+        'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary64.0' => '/usr/local/bin/bm-script-convert --pointer-size=64',
         'application/vnd.badgermind.sd text/html' => '/usr/local/bin/bm-script-convert --format=html');
 
 if (isset($_GET['media-type']) && isset($conversions["$content_type {$_GET['media-type']}"]))

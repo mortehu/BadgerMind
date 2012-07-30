@@ -131,6 +131,13 @@ FbxConvert_EmitMesh (FILE *output, const fbx_mesh &mesh)
       fprintf (output, ")");
     }
 
+  fprintf (output, " bounding-box:data(");
+  for (i = 0; i < 3; ++i)
+    FbxConvert_EmitFloat (output, mesh.boundsMin.v[i]);
+  for (i = 0; i < 3; ++i)
+    FbxConvert_EmitFloat (output, mesh.boundsMax.v[i]);
+  fprintf (output, ")");
+
   fprintf (output, ")");
 }
 
@@ -165,11 +172,16 @@ FbxConvert_EmitTake (FILE *output, const fbx_take &take)
 }
 
 void
-FbxConvertExportBinary (fbx_model &model)
+FbxConvertExportBinary (fbx_model &model, unsigned int pointerSize)
 {
   FILE *pipe;
+  char *command;
 
-  pipe = popen (BINDIR "/bm-script-convert", "w");
+  asprintf (&command, "%s --pointer-size=%u", BINDIR "/bm-script-convert", pointerSize);
+
+  pipe = popen (command, "w");
+
+  free (command);
 
   for (auto mesh : model.meshes)
     FbxConvert_EmitMesh (pipe, mesh);

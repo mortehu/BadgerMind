@@ -9,9 +9,16 @@ struct fbx_matrix
   float v[16];
 };
 
+struct fbx_vector
+{
+  float v[3];
+};
+
 struct fbx_mesh
 {
   std::string diffuseTexture;
+
+  fbx_vector boundsMin, boundsMax;
 
   fbx_matrix matrix;
   std::vector<float> bindPose;
@@ -42,7 +49,7 @@ struct fbx_model
 };
 
 void
-FbxConvertExportBinary (fbx_model &model);
+FbxConvertExportBinary (fbx_model &model, unsigned int pointerSize);
 
 void
 FbxConvertExportJSON (fbx_model &model);

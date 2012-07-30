@@ -15,20 +15,16 @@
 static int Script_printHelp;
 static int Script_printVersion;
 static const char *Script_format = "binary";
+static int Script_pointerSize = 32;
 
 static struct option Script_longOptions[] =
 {
     { "format", required_argument, 0, 'f' },
+    { "pointer-size", required_argument, 0, 'p' },
     { "help",     no_argument, &Script_printHelp, 1 },
     { "version",  no_argument, &Script_printVersion, 1 },
     { 0, 0, 0, 0 }
 };
-
-void
-script_dump_binary (struct script_parse_context *context);
-
-void
-script_dump_html (struct script_parse_context *context);
 
 int
 main (int argc, char **argv)
@@ -50,6 +46,12 @@ main (int argc, char **argv)
 
           break;
 
+        case 'p':
+
+          Script_pointerSize = atoi (optarg);
+
+          break;
+
         case '?':
 
           fprintf(stderr, "Try `%s --help' for more information.\n", argv[0]);
@@ -64,6 +66,7 @@ main (int argc, char **argv)
               "Usage: %s [OPTION]... SCRIPT\n"
               "\n"
               "  -f, --format=FORMAT      set output format\n"
+              "  -p, --pointer-size=BITS  set size of pointers on target platform\n"
               "      --help     display this help and exit\n"
               "      --version  display version information\n"
               "\n"
@@ -98,7 +101,7 @@ main (int argc, char **argv)
   SCRIPT_Optimize (&context);
 
   if (!strcmp (Script_format, "binary"))
-    script_dump_binary (&context);
+    script_dump_binary (&context, Script_pointerSize);
   else if (!strcmp (Script_format, "html"))
     script_dump_html (&context);
   else

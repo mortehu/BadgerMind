@@ -17,10 +17,12 @@
 static int FbxConvert_printHelp;
 static int FbxConvert_printVersion;
 static const char *FbxConvert_format = "binary";
+static unsigned int FbxConvert_pointerSize = 32;
 
 static struct option FbxConvert_longOptions[] =
 {
     { "format", required_argument, 0, 'f' },
+    { "pointer-size", required_argument, 0, 'p' },
     { "help",     no_argument, &FbxConvert_printHelp, 1 },
     { "version",  no_argument, &FbxConvert_printVersion, 1 },
     { 0, 0, 0, 0 }
@@ -43,6 +45,9 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
 
 static FbxAMatrix
 GetGeometry(FbxNode* node);
+
+static void
+FindBoundingBox (fbx_model &model);
 
 int
 main(int argc, char** argv)
@@ -68,6 +73,12 @@ main(int argc, char** argv)
         case 'f':
 
           FbxConvert_format = optarg;
+
+          break;
+
+        case 'p':
+
+          FbxConvert_pointerSize = atoi (optarg);
 
           break;
 
@@ -154,8 +165,10 @@ main(int argc, char** argv)
   for (i = 0; i < takeNames.GetCount(); i++)
     ConvertTakeToIntermediate (model, scene, takeNames[i]);
 
+  FindBoundingBox (model);
+
   if (!strcmp (FbxConvert_format, "binary"))
-    FbxConvertExportBinary (model);
+    FbxConvertExportBinary (model, FbxConvert_pointerSize);
   else if (!strcmp (FbxConvert_format, "json"))
     FbxConvertExportJSON (model);
   else
@@ -166,6 +179,48 @@ main(int argc, char** argv)
     }
 
   return EXIT_SUCCESS;
+}
+
+static void
+FindBoundingBox (fbx_model &model)
+{
+  for (auto &mesh : model.meshes)
+    {
+      float minX = 0, minY = 0, minZ = 0;
+      float maxX = 0, maxY = 0, maxZ = 0;
+
+      if (mesh.xyz.empty ())
+        continue;
+
+      minX = maxX = mesh.xyz[0];
+      minY = maxY = mesh.xyz[1];
+      minZ = maxZ = mesh.xyz[2];
+
+      for (size_t i = 3; i < mesh.xyz.size (); i += 3)
+        {
+          if (mesh.xyz[i] < minX)
+            minX = mesh.xyz[i];
+          else if (mesh.xyz[i] > maxX)
+            maxX = mesh.xyz[i];
+
+          if (mesh.xyz[i + 1] < minY)
+            minY = mesh.xyz[i + 1];
+          else if (mesh.xyz[i + 1] > maxY)
+            maxY = mesh.xyz[i + 1];
+
+          if (mesh.xyz[i + 2] < minZ)
+            minZ = mesh.xyz[i + 2];
+          else if (mesh.xyz[i + 2] > maxZ)
+            maxZ = mesh.xyz[i + 2];
+        }
+
+      mesh.boundsMin.v[0] = minX;
+      mesh.boundsMin.v[1] = minY;
+      mesh.boundsMin.v[2] = minZ;
+      mesh.boundsMax.v[0] = maxX;
+      mesh.boundsMax.v[1] = maxY;
+      mesh.boundsMax.v[2] = maxZ;
+    }
 }
 
 static void

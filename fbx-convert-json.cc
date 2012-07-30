@@ -65,6 +65,20 @@ FbxConvertExportJSON (fbx_model &model)
                   mesh.uv[i * 2 + 1]);
         }
 
+      printf ("], \"min-bounds\":[");
+
+      printf ("%.7g, %.7g, %.7g",
+              mesh.boundsMin.v[0],
+              mesh.boundsMin.v[1],
+              mesh.boundsMin.v[2]);
+
+      printf ("], \"max-bounds\":[");
+
+      printf ("%.7g, %.7g, %.7g",
+              mesh.boundsMax.v[0],
+              mesh.boundsMax.v[1],
+              mesh.boundsMax.v[2]);
+
       printf ("]");
 
       putchar ('}');

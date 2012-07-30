@@ -83,9 +83,12 @@ main (int argc, char **argv)
     }
 
   if (optind + 1 < argc)
-    err (EX_USAGE, "Usage: %s [OPTION]... [SCRIPT]", argv[0]);
+    errx (EX_USAGE, "Usage: %s [OPTION]... [SCRIPT]", argv[0]);
   else if (optind == argc)
-    script_parse_file (&context, stdin);
+    {
+      if (-1 == script_parse_file (&context, stdin))
+        return EXIT_FAILURE;
+    }
   else
     {
       FILE *input;
@@ -93,7 +96,8 @@ main (int argc, char **argv)
       if(!(input = fopen(argv[optind], "r")))
         err (EXIT_FAILURE, "%s: failed to open `%s' for reading", argv[0], argv[optind]);
 
-      script_parse_file (&context, input);
+      if (-1 == script_parse_file (&context, input))
+        return EXIT_FAILURE;
 
       fclose (input);
     }

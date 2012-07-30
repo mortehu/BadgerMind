@@ -138,7 +138,7 @@ expression
         ALLOC (expr);
         expr->type = ScriptExpressionNumeric;
         expr->lhs.numeric = $1;
-        expr->scale = 3.14159265358979323846 / 180.0;
+        expr->scale = SCRIPT_DEGREES;
         $$ = expr;
       }
     | Identifier
@@ -243,7 +243,6 @@ extern unsigned int line;
 void
 yyerror(YYLTYPE *loc, struct script_parse_context *context, const char *message)
 {
-  fprintf(stderr, "\033[31;1m%u:%u:Parse error: %s\n\033[00m\n",
-          line, character, message);
+  fprintf (stderr, "%s (line %u, column %u)\n", message, line, character);
   context->error = 1;
 }

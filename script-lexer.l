@@ -133,6 +133,10 @@ script_parse_file(struct script_parse_context *context, FILE *file)
     yy_switch_to_buffer(buf, context->scanner);
     yyset_extra(&context->statement_arena, context->scanner);
     result = yyparse(context);
+
+    if (context->error)
+      result = -1;
+
     yy_delete_buffer(buf, context->scanner);
   }
 

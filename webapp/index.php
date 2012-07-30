@@ -457,19 +457,24 @@ if (!file_exists($path))
   exit;
 }
 
-if ($method != 'GET' && $method != 'HEAD')
-{
-  header("HTTP/1.1 405 Method {$method} Not Allowed");
-  echo "405 Method {$method} Not Allowed";
-
-  exit;
-}
-
-if(isset($_SERVER['HTTP_IF_MODIFIED_SINCE']))
+if ($method == 'GET' && isset($_SERVER['HTTP_IF_MODIFIED_SINCE']))
 {
   $if_modified_since = strtotime(preg_replace('/;.*$/', '', $_SERVER['HTTP_IF_MODIFIED_SINCE']));
 
   if (filemtime($path) <= $if_modified_since)
+  {
+    header('HTTP/1.1 304 Not Modified');
+
+    exit;
+  }
+}
+
+$source_data = file_get_contents($path);
+$etag = '"' . sha1($source_data) . '"';
+
+if ($method == 'GET' && isset($_SERVER['HTTP_IF_NONE_MATCH']))
+{
+  if ($etag == $_SERVER['HTTP_IF_NONE_MATCH'])
   {
     header('HTTP/1.1 304 Not Modified');
 
@@ -569,22 +574,62 @@ else if (isset($_SERVER['HTTP_ACCEPT']) && sizeof($_SERVER['HTTP_ACCEPT']))
 else
   $best_format = $content_type;
 
+if ($method != 'GET' && $method != 'HEAD'
+    && ($method != 'POST' || !isset($best_handler) || $best_handler[0] == '/'))
+{
+  header("HTTP/1.1 405 Method {$method} Not Allowed");
+  echo "405 Method {$method} Not Allowed";
+
+  exit;
+}
+
 header("Vary: Accept");
 header("Last-Modified: " . strftime("%a, %d %b %Y %T %z", filemtime($path)));
+header("ETag: $etag");
+
+if (!strncmp($best_format, 'text/', 5))
+  header("Content-Type: $best_format; charset=UTF-8");
+else
+  header("Content-Type: $best_format");
 
 if (!isset($best_handler))
 {
-  header("Content-Type: $best_format");
   header("Content-Length: " . filesize($path));
 
   readfile($path);
 }
 else
 {
-  header("Content-Type: $best_format");
+  header("Content-Location: http://{$_SERVER['HTTP_HOST']}/{$relative_path}?media-type={$best_format}");
 
   if ($best_handler[0] == '/')
-    passthru("$best_handler " . escapeshellarg($path));
+  {
+    $descriptorspec = array(1 => array("pipe", "w"), 2 => array("pipe", "w"));
+
+    $process = proc_open("$best_handler " . escapeshellarg($path), $descriptorspec, $pipes);
+
+    $payload = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+
+    $error = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+
+    $result = proc_close($process);
+
+    if ($result != 0)
+    {
+      header('HTTP/1.1 500 Internal Server Error');
+      header('Content-Type: text/plain');
+
+      echo ucfirst($error);
+    }
+    else
+    {
+      header("Content-Length: " . strlen($payload));
+
+      echo $payload;
+    }
+  }
   else
     require($best_handler);
 }

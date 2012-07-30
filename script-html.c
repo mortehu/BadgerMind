@@ -32,7 +32,12 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
     {
     case ScriptExpressionNumeric:
 
-      printf ("%s", expression->lhs.numeric);
+      if (!expression->scale)
+        printf ("%s", expression->lhs.numeric);
+      else if (expression->scale == SCRIPT_DEGREES)
+        printf ("%s°", expression->lhs.numeric);
+      else
+        printf ("(%s × %g)", expression->lhs.numeric, expression->scale);
 
       break;
 
@@ -90,7 +95,7 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
     case ScriptExpressionSubtract:
 
       script_dump_expression (expression->lhs.expression, 0, level + 1);
-      printf (" - ");
+      printf (" − ");
       script_dump_expression (expression->rhs, 0, level + 1);
 
       break;
@@ -98,7 +103,7 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
     case ScriptExpressionMultiply:
 
       script_dump_expression (expression->lhs.expression, 0, level + 1);
-      printf (" * ");
+      printf (" × ");
       script_dump_expression (expression->rhs, 0, level + 1);
 
       break;
@@ -106,14 +111,14 @@ script_dump_expression (struct ScriptExpression *expression, int isURI, int leve
     case ScriptExpressionDivide:
 
       script_dump_expression (expression->lhs.expression, 0, level + 1);
-      printf (" / ");
+      printf (" ÷ ");
       script_dump_expression (expression->rhs, 0, level + 1);
 
       break;
 
     case ScriptExpressionNegative:
 
-      printf ("-");
+      printf ("−");
       script_dump_expression (expression->lhs.expression, 0, level + 1);
 
       break;
@@ -128,20 +133,25 @@ script_dump_statement (struct ScriptStatement *statement, int level)
   if (statement->offset)
     return;
 
-  printf ("(%s\n", statement->identifier);
-
-  for (parameter = statement->parameters; parameter; parameter = parameter->next)
+  if (!statement->parameters)
+    printf ("(%s)", statement->identifier);
+  else
     {
-      indent (level + 2);
+      printf ("(%s\n", statement->identifier);
 
-      printf (" %s: ", parameter->identifier);
-      script_dump_expression (parameter->expression, NULL != strstr (parameter->identifier, "URI"), level + 4 + strlen (parameter->identifier));
+      for (parameter = statement->parameters; parameter; parameter = parameter->next)
+        {
+          indent (level + 2);
 
-      if (parameter->next)
-        printf ("\n");
+          printf (" %s: ", parameter->identifier);
+          script_dump_expression (parameter->expression, NULL != strstr (parameter->identifier, "URI"), level + 4 + strlen (parameter->identifier));
+
+          if (parameter->next)
+            printf ("\n");
+        }
+
+      printf (")");
     }
-
-  printf (")");
 
   if (statement->next)
     {

@@ -19,8 +19,9 @@ if ($method == 'OPTIONS')
 
 header ('DAV: 1, 3, extended-mkcol, 2');
 
-require_once('lib/path.php');
 require_once('lib/git.php');
+require_once('lib/html.php');
+require_once('lib/path.php');
 
 $email_addresses = array('mortehu' => 'Morten Hustveit <morten.hustveit@gmail.com>',
                          'flemm' => 'Tollef Roe Steen <tollef.steen@hihm.no>');
@@ -112,7 +113,7 @@ if ($method == 'POST')
     header('HTTP/1.1 303 See Other');
     header("Location: http://{$_SERVER['HTTP_HOST']}/" . pathinfo($relative_path, PATHINFO_DIRNAME) . "/");
 
-    break;
+    exit;
 
   case 'delete':
 
@@ -121,7 +122,7 @@ if ($method == 'POST')
     header('HTTP/1.1 303 See Other');
     header("Location: http://{$_SERVER['HTTP_HOST']}/" . pathinfo($relative_path, PATHINFO_DIRNAME) . "/");
 
-    break;
+    exit;
 
   case 'commit':
 
@@ -151,10 +152,8 @@ if ($method == 'POST')
     header('HTTP/1.1 303 See Other');
     header("Location: http://{$_SERVER['HTTP_HOST']}/" . pathinfo($relative_path, PATHINFO_DIRNAME) . "/");
 
-    break;
+    exit;
   }
-
-  exit;
 }
 
 if (is_dir($path))
@@ -397,6 +396,12 @@ else if (file_exists($path))
     print_file_response("$path", "$base_uri");
 
     echo "</d:multistatus>\n";
+
+    exit;
+  }
+  else if ($method == 'DELETE')
+  {
+    unlink($path);
 
     exit;
   }

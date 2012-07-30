@@ -69,6 +69,9 @@ struct ScriptExpression
   off_t offset;
 };
 
+void
+SCRIPT_Optimize (struct script_parse_context *context);
+
 int
 script_parse_file(struct script_parse_context *context, FILE *file);
 

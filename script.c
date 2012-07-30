@@ -95,6 +95,8 @@ main (int argc, char **argv)
       fclose (input);
     }
 
+  SCRIPT_Optimize (&context);
+
   if (!strcmp (Script_format, "binary"))
     script_dump_binary (&context);
   else if (!strcmp (Script_format, "html"))

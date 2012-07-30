@@ -12,7 +12,7 @@ bm_watch_subdirs_SOURCES = watch-subdirs.c
 bm_fbx_convert_CXXFLAGS = $(AM_CXXFLAGS) -Wno-reorder -Wno-sign-compare -Wno-strict-aliasing
 bm_fbx_convert_SOURCES = \
   fbx-convert.cc \
-  fbx-convert-binary.c \
+  fbx-convert-binary.cc \
   fbx-convert-json.c
 bm_fbx_convert_LDADD = -Lfbx/lib/gcc4/x64 -ldl -lfbxsdk-2013.1-static
 
@@ -21,7 +21,8 @@ bm_script_convert_SOURCES = \
   arena.c arena.h \
   script-lexer.l \
   script-parser.y \
-  script-binary.c \
+  script-optimize.cc \
+  script-binary.cc \
   script-html.c \
   script.c
 

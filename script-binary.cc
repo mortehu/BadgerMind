@@ -264,11 +264,7 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
     case ScriptExpressionParen:
 
       SCRIPT_EmitExpression (expression->lhs.expression);
-
-      SCRIPT_Align (1, SCRIPT_pointerAlign);
-      expression->offset = SCRIPT_dumpOffset;
-      SCRIPT_EmitByte (ScriptVMExpressionParen);
-      SCRIPT_EmitPointer (expression->lhs.expression->offset);
+      expression->offset = expression->lhs.expression->offset;
 
       break;
 

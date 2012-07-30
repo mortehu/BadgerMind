@@ -97,10 +97,8 @@ png_load (const char* path, void **ret_data, unsigned int *ret_width, unsigned i
   png_infop pnginfo;
   png_uint_32 width, height;
   unsigned char* data;
-  unsigned int row, col;
+  unsigned int row;
   int bit_depth, pixel_format, interlace_type;
-  int no_alpha = 0;
-
   f = fopen(path, "rb");
 
   if(!f)
@@ -129,45 +127,47 @@ png_load (const char* path, void **ret_data, unsigned int *ret_width, unsigned i
   if(bit_depth != 8)
     errx(EXIT_FAILURE, "Unsupported bit depth %d in %s", bit_depth, path);
 
-  switch(pixel_format)
+  switch (pixel_format)
     {
+    case PNG_COLOR_TYPE_GRAY:
+
+      png_set_add_alpha (png, 0xff, PNG_FILLER_BEFORE);
+
+    case PNG_COLOR_TYPE_GRAY_ALPHA:
+
+      png_set_gray_to_rgb (png);
+
+      break;
+
     case PNG_COLOR_TYPE_RGB_ALPHA:
 
       break;
 
+    case PNG_COLOR_TYPE_PALETTE:
+
+      png_set_palette_to_rgb (png);
+
     case PNG_COLOR_TYPE_RGB:
 
-      no_alpha = 1;
+      png_set_add_alpha (png, 0xff, PNG_FILLER_BEFORE);
 
       break;
 
     default:
 
-      errx(EXIT_FAILURE, "Unsupported pixel format in %s", path);
+      errx (EXIT_FAILURE, "Unsupported pixel format %d", pixel_format);
     }
+
+  png_set_swap_alpha (png);
 
   data = malloc(height * width * 4);
 
   rows = malloc(sizeof(png_bytep) * height);
 
   for(row = 0; row < height; ++row)
-    rows[row] = data + row * width * 4;
+    rows[row] = data + (height - row - 1) * width * 4;
 
   png_read_image(png, rows);
-
-  if (no_alpha)
-    {
-      for(row = height; row-- > 0; )
-        {
-          for (col = width; col-- > 0; )
-            {
-              rows[row][col * 4 + 3] = 0xff;
-              rows[row][col * 4 + 2] = rows[row][col * 3 + 2];
-              rows[row][col * 4 + 1] = rows[row][col * 3 + 1];
-              rows[row][col * 4 + 0] = rows[row][col * 3 + 0];
-            }
-        }
-    }
 
   free(rows);
 

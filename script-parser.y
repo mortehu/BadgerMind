@@ -46,7 +46,7 @@ yyerror(YYLTYPE *loc, struct script_parse_context *context, const char *message)
 %type<p> parameters parameter
 %type<p> expression
 
-%left '=' '<' '>' '+' '-' '*' '/' UMINUS
+%left '=' '<' '>' '+' MINUS MUL DIV UMINUS
 
 %start document
 %%

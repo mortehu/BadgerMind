@@ -1,7 +1,7 @@
 BUILT_SOURCES = script-lexer.c script-parser.c
-bin_PROGRAMS = bm-watch-subdirs bm-fbx-convert bm-script-convert
+bin_PROGRAMS = bm-watch-subdirs bm-fbx-convert bm-script-convert bm-texture-convert
 
-AM_CPPFLAGS = -Ifbx/include
+AM_CPPFLAGS = -Ifbx/include -IPVRTC -IPVRTexLib
 
 AM_YFLAGS = -d
 AM_CFLAGS = -g -Wall -pthread -std=c99
@@ -25,6 +25,11 @@ bm_script_convert_SOURCES = \
   script-binary.cc \
   script-html.c \
   script.c
+
+bm_texture_convert_SOURCES = \
+  texture-convert.cc \
+  png-wrapper.c
+bm_texture_convert_LDADD = -lpng -LPVRTC/Linux_x86_64 -LPVRTexLib/Linux_x86_64 -lPVRTC -lPVRTexLib
 
 clean-local:
 	rm -f $(BUILT_SOURCES)

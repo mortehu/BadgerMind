@@ -509,7 +509,8 @@ $conversions =
         'application/vnd.badgermind.sd text/plain' => 'show-as-plaintext.php',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary64.0' => '/usr/local/bin/bm-script-convert --pointer-size=64',
-        'application/vnd.badgermind.sd text/html' => '/usr/local/bin/bm-script-convert --format=html');
+        'application/vnd.badgermind.sd text/html' => '/usr/local/bin/bm-script-convert --format=html',
+        'image/png application/vnd.powervr.pvrtc' => '/usr/local/bin/bm-texture-convert --format=pvrtc');
 
 if (isset($_GET['media-type']) && isset($conversions["$content_type {$_GET['media-type']}"]))
 {

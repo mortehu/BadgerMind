@@ -488,6 +488,8 @@ elseif (0 == strcasecmp($extension, "webm"))
   $content_type = 'audio/webm';
 elseif (0 == strcasecmp($extension, "bsd"))
   $content_type = 'application/vnd.badgermind.sd';
+elseif (0 == strcasecmp($extension, "bid"))
+  $content_type = 'application/vnd.badgermind.id';
 else
 {
   readfile($path);
@@ -500,6 +502,11 @@ $conversions =
         'application/vnd.autodesk.fbx application/vnd.badgermind.sd.binary64.0' => '/usr/local/bin/bm-fbx-convert --pointer-size=64',
         'application/vnd.autodesk.fbx application/json' => '/usr/local/bin/bm-fbx-convert --format=json',
         'application/vnd.autodesk.fbx text/html' => 'model-webgl-wrapper.php',
+        'application/vnd.badgermind.id text/plain' => 'show-as-plaintext.php',
+        'application/vnd.badgermind.id application/vnd.badgermind.sd.binary.0' => 'bid-to-script.php',
+        'application/vnd.badgermind.id application/vnd.badgermind.sd.binary64.0' => 'bid-to-script.php',
+        'application/vnd.badgermind.id text/html' => 'bid-to-html.php',
+        'application/vnd.badgermind.sd text/plain' => 'show-as-plaintext.php',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary.0' => '/usr/local/bin/bm-script-convert',
         'application/vnd.badgermind.sd application/vnd.badgermind.sd.binary64.0' => '/usr/local/bin/bm-script-convert --pointer-size=64',
         'application/vnd.badgermind.sd text/html' => '/usr/local/bin/bm-script-convert --format=html');

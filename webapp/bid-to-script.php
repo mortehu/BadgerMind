@@ -36,7 +36,7 @@ $p = popen($command, "w");
 
 foreach ($instances as $instance)
 {
-  fprintf ($p, "(instance model:(model URI:\"%s\") shader:(shader name:\"%s\") transform:(mat4x4 x:%.6f y:%.6f z:%.6f))\n",
+  fprintf ($p, "(instance model:(model URI:\"%s\" shader:(shader name:\"%s\")) transform:(mat4x4 x:%.6f y:%.6f z:%.6f))\n",
            $instance[0], $instance[1], $instance[2], $instance[3], $instance[4]);
 }
 

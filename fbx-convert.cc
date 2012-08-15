@@ -12,6 +12,8 @@
 #include <fbxsdk.h>
 #include <fbxsdk/utils/fbxutilities.h>
 
+#include <PVRTTriStrip.h>
+
 #include "fbx-convert.h"
 
 static int FbxConvert_printHelp;
@@ -45,6 +47,9 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
 
 static FbxAMatrix
 GetGeometry(FbxNode* node);
+
+static void
+GenTriStrips (fbx_model &model);
 
 static void
 FindBoundingBox (fbx_model &model);
@@ -165,6 +170,8 @@ main(int argc, char** argv)
   for (i = 0; i < takeNames.GetCount(); i++)
     ConvertTakeToIntermediate (model, scene, takeNames[i]);
 
+  GenTriStrips (model);
+
   FindBoundingBox (model);
 
   if (!strcmp (FbxConvert_format, "binary"))
@@ -179,6 +186,13 @@ main(int argc, char** argv)
     }
 
   return EXIT_SUCCESS;
+}
+
+static void
+GenTriStrips (fbx_model &model)
+{
+  for (auto &mesh : model.meshes)
+    PVRTTriStripList (&mesh.indices[0], mesh.indices.size () / 3);
 }
 
 static void

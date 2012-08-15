@@ -245,6 +245,8 @@ SCRIPT_EmitExpression (struct ScriptExpression *expression)
 
     case ScriptExpressionIdentifier:
 
+      SCRIPT_Align (1, SCRIPT_pointerAlign);
+
       expression->offset = SCRIPT_dumpOffset;
       SCRIPT_EmitIdentifier (expression->lhs.string);
 

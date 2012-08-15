@@ -602,6 +602,15 @@ else
 {
   header("Content-Location: http://{$_SERVER['HTTP_HOST']}/{$relative_path}?media-type={$best_format}");
 
+  $key = "/var/cache/badgermind/" . sha1($etag . " " . $best_format);
+
+  if (file_exists($key))
+  {
+    readfile($key);
+
+    exit;
+  }
+
   if ($best_handler[0] == '/')
   {
     $descriptorspec = array(1 => array("pipe", "w"), 2 => array("pipe", "w"));
@@ -622,14 +631,22 @@ else
       header('Content-Type: text/plain');
 
       echo ucfirst($error);
+
+      exit;
     }
-    else
+
+    if (strlen ($payload))
     {
+      /* XXX: Do this atomically */
+      file_put_contents($key, $payload);
+
       header("Content-Length: " . strlen($payload));
 
       echo $payload;
     }
   }
   else
+  {
     require($best_handler);
+  }
 }

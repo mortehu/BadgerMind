@@ -4,9 +4,9 @@
 
  @Title        
 
- @Version       @Version       * Notes        : Extracted from tools.c version 
+ @Version       * Notes        : Extracted from tools.c version 
 
- @Copyright    Copyright (c) Imagination Technologies Limited.
+ @Copyright    Copyright (c) Imagination Technologies Limited. All Rights Reserved. Strictly Confidential.
 
  @Platform     ANSI
 
@@ -135,5 +135,4 @@ DllExport void pvrtc_info_output(FILE *DebugOutput);
 /*
 // END OF FILE
 */ 
-
 

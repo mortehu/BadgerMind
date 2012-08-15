@@ -52,6 +52,9 @@ static void
 GenTriStrips (fbx_model &model);
 
 static void
+BiasUVCoordinates (fbx_model &model);
+
+static void
 FindBoundingBox (fbx_model &model);
 
 int
@@ -171,7 +174,7 @@ main(int argc, char** argv)
     ConvertTakeToIntermediate (model, scene, takeNames[i]);
 
   GenTriStrips (model);
-
+  BiasUVCoordinates (model);
   FindBoundingBox (model);
 
   if (!strcmp (FbxConvert_format, "binary"))
@@ -192,7 +195,86 @@ static void
 GenTriStrips (fbx_model &model)
 {
   for (auto &mesh : model.meshes)
-    PVRTTriStripList (&mesh.indices[0], mesh.indices.size () / 3);
+    {
+      std::vector<size_t> remap;
+      std::vector<float> new_xyz;
+      std::vector<float> new_uv;
+      std::vector<uint8_t> new_weights;
+      std::vector<uint8_t> new_bones;
+      size_t fill = 0;
+
+      PVRTTriStripList (&mesh.indices[0], mesh.indices.size () / 3);
+
+      remap.resize (mesh.xyz.size () / 3, (size_t) -1);
+
+      for (auto &i : mesh.indices)
+        {
+          if (remap[i] == (size_t) -1)
+            {
+              remap[i] = fill++;
+
+              new_xyz.push_back (mesh.xyz[i * 3 + 0]);
+              new_xyz.push_back (mesh.xyz[i * 3 + 1]);
+              new_xyz.push_back (mesh.xyz[i * 3 + 2]);
+              new_uv.push_back (mesh.uv[i * 2 + 0]);
+              new_uv.push_back (mesh.uv[i * 2 + 1]);
+
+              if (!mesh.weights.empty ())
+                {
+                  new_weights.push_back (mesh.weights[i * 4 + 0]);
+                  new_weights.push_back (mesh.weights[i * 4 + 1]);
+                  new_weights.push_back (mesh.weights[i * 4 + 2]);
+                  new_weights.push_back (mesh.weights[i * 4 + 3]);
+                  new_bones.push_back (mesh.bones[i * 4 + 0]);
+                  new_bones.push_back (mesh.bones[i * 4 + 1]);
+                  new_bones.push_back (mesh.bones[i * 4 + 2]);
+                  new_bones.push_back (mesh.bones[i * 4 + 3]);
+                }
+            }
+
+          i = remap[i];
+        }
+
+      mesh.xyz.swap (new_xyz);
+      mesh.uv.swap (new_uv);
+      mesh.weights.swap (new_weights);
+      mesh.bones.swap (new_bones);
+    }
+}
+
+static void
+BiasUVCoordinates (fbx_model &model)
+{
+  /* Ensure all UV coordinates are above 0 */
+
+  for (auto &mesh : model.meshes)
+    {
+      float min_u = 0.0f, min_v = 0.0f;
+      size_t i;
+
+      for (i = 0; i < mesh.uv.size (); i += 2)
+        {
+          if (mesh.uv[i] < min_u)
+            min_u = mesh.uv[i];
+
+          if (mesh.uv[i + 1] < min_v)
+            min_v = mesh.uv[i + 1];
+        }
+
+      min_u = floor (min_u);
+      min_v = floor (min_v);
+
+      if (!min_u && !min_v)
+        continue;
+
+      fprintf (stderr, "Bias %.2f %.2f\n", min_u, min_v);
+
+      for (i = 0; i < mesh.uv.size (); i += 2)
+        {
+          mesh.uv[i] -= min_u;
+          mesh.uv[i] -= min_v;
+        }
+    }
 }
 
 static void

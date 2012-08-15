@@ -55,8 +55,8 @@ FbxConvert_EmitVertexBuffer (FILE *output, const fbx_mesh &mesh)
           FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 0]);
           FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 1]);
           FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 2]);
-          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 0]);
-          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 1]);
+          FbxConvert_EmitU16 (output, mesh.uv[i * 2 + 0] * 4096.0f);
+          FbxConvert_EmitU16 (output, mesh.uv[i * 2 + 1] * 4096.0f);
         }
 
       fprintf (output, " )");
@@ -73,8 +73,8 @@ FbxConvert_EmitVertexBuffer (FILE *output, const fbx_mesh &mesh)
           FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 0]);
           FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 1]);
           FbxConvert_EmitFloat (output, mesh.xyz[i * 3 + 2]);
-          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 0]);
-          FbxConvert_EmitFloat (output, mesh.uv[i * 2 + 1]);
+          FbxConvert_EmitU16 (output, mesh.uv[i * 2 + 0] * 4096.0f);
+          FbxConvert_EmitU16 (output, mesh.uv[i * 2 + 1] * 4096.0f);
 
           FbxConvert_EmitByte (output, mesh.weights[i * 4 + 0]);
           FbxConvert_EmitByte (output, mesh.weights[i * 4 + 1]);

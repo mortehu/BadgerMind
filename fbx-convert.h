@@ -16,6 +16,8 @@ struct fbx_vector
 
 struct fbx_mesh
 {
+  float lod;
+
   std::string diffuseTexture;
 
   fbx_vector boundsMin, boundsMax;

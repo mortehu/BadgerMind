@@ -574,6 +574,7 @@ ConvertMeshToIntermediateRecursive (fbx_model &output,
       unsigned int lSkinCount = 0;
       unsigned int lVertexCount;
       unsigned int i;
+      const char *name;
 
       std::map<tmp_vertex, int> vertexMap;
       std::vector<tmp_vertex> vertexArray;
@@ -581,7 +582,9 @@ ConvertMeshToIntermediateRecursive (fbx_model &output,
       mesh = node->GetMesh ();
       lVertexCount = mesh->GetControlPointsCount();
 
-      if (!strncmp (node->GetName (), "Bn_", 3))
+      name = node->GetName ();
+
+      if (!strncmp (name, "Bn_", 3))
         return;
 
       if (!lVertexCount)
@@ -594,6 +597,17 @@ ConvertMeshToIntermediateRecursive (fbx_model &output,
 
       output.meshes.push_back (fbx_mesh ());
       fbx_mesh &newMesh = output.meshes.back ();
+
+      if (!strncasecmp (name, "LOD_", 4))
+        {
+          char *endptr;
+          newMesh.lod = strtod (name + 4, &endptr);
+
+          if (*endptr)
+            newMesh.lod = HUGE_VAL;
+        }
+      else
+        newMesh.lod = HUGE_VAL;
 
         {
           int lMaterialIndex;

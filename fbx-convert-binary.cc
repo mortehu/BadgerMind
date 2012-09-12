@@ -111,6 +111,7 @@ FbxConvert_EmitMesh (FILE *output, const fbx_mesh &mesh)
   size_t i;
 
   fprintf (output, "(mesh");
+  fprintf (output, " lod:%.6f", mesh.lod);
   fprintf (output, " diffuse-texture:(texture-2d URI:\"%s\")", mesh.diffuseTexture.c_str ());
   fprintf (output, " vertex-buffer:");
   FbxConvert_EmitVertexBuffer (output, mesh);

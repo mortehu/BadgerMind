@@ -29,6 +29,7 @@ yyerror(YYLTYPE *loc, struct script_parse_context *context, const char *message)
 %token EOF_
 
 %token MINUS MUL DIV DEGREES
+%token INFINITY
 
 %token Numeric
 %type<p> Numeric
@@ -139,6 +140,14 @@ expression
         expr->type = ScriptExpressionNumeric;
         expr->lhs.numeric = $1;
         expr->scale = SCRIPT_DEGREES;
+        $$ = expr;
+      }
+    | INFINITY
+      {
+        struct ScriptExpression *expr;
+        ALLOC (expr);
+        expr->type = ScriptExpressionNumeric;
+        expr->lhs.numeric = "INF";
         $$ = expr;
       }
     | Identifier

@@ -27,6 +27,7 @@ binaryliteral(yyscan_t yyscanner);
 %%
 0x[A-Fa-f0-9]+
 -?[0-9]*(\.[0-9]+)?([eE][+-]?[0-9]+)? { yylval->p = arena_strdup(yyextra, yytext); character += yyleng; return Numeric; }
+inf                    { return INFINITY; }
 
 \"                     { return stringliteral(yyscanner); }
 data\(                 { return binaryliteral(yyscanner); }

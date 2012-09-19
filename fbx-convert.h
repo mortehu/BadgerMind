@@ -14,6 +14,12 @@ struct fbx_vector
   float v[3];
 };
 
+struct fbx_take_range
+{
+  std::string name;
+  unsigned int begin, end;
+};
+
 struct fbx_mesh
 {
   float lod;
@@ -47,6 +53,7 @@ struct fbx_take
 struct fbx_model
 {
   std::vector<fbx_mesh> meshes;
+  std::vector<fbx_take_range> takeRanges;
   std::vector<fbx_take> takes;
 };
 

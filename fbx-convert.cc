@@ -103,6 +103,8 @@ main(int argc, char** argv)
       fprintf(stdout,
               "Usage: %s [OPTION]... FILENAME\n"
               "\n"
+              "      --format\n"
+              "      --pointer-size\n"
               "      --help     display this help and exit\n"
               "      --version  display version information\n"
               "\n"
@@ -550,6 +552,65 @@ ConvertInitialClusterDeformationToIntermediate (fbx_mesh &output,
   delete [] weights;
 }
 
+static void
+ExtractUserProperties (fbx_model &output, const char *properties)
+{
+  char *buffer;
+  char *line, *line_saveptr, *end, *comma;
+
+  buffer = strdup (properties);
+
+  line = strtok_r (buffer, "\n", &line_saveptr);
+
+  while (line)
+    {
+      end = strchr (line, 0);
+
+      while (end > line && isspace (end[-1]))
+        *--end = 0;
+
+      if (NULL != (comma = strchr (line, ',')))
+        {
+          int start, end;
+          int prefix;
+
+          *comma++ = 0;
+
+          while (*comma && isspace (*comma))
+            ++comma;
+
+          for (prefix = 0; line[prefix]; ++prefix)
+            {
+              if (line[prefix] != comma[prefix])
+                break;
+            }
+
+          if (prefix <= 1 || line[prefix - 1] != '_')
+            continue;
+
+          --prefix;
+
+          if (   1 == sscanf (line + prefix,  "_start=%d", &start)
+              && 1 == sscanf (comma + prefix, "_end=%d",   &end))
+            {
+              fbx_take_range ftr;
+
+              line[prefix] = 0;
+
+              ftr.name = line;
+              ftr.begin = start;
+              ftr.end = end;
+
+              output.takeRanges.push_back (ftr);
+            }
+        }
+
+      line = strtok_r (NULL, "\n", &line_saveptr);
+    }
+
+  free (buffer);
+}
+
 void
 ConvertMeshToIntermediateRecursive (fbx_model &output,
                                     FbxNode* node,
@@ -567,158 +628,176 @@ ConvertMeshToIntermediateRecursive (fbx_model &output,
 
   FbxNodeAttribute* lNodeAttribute = node->GetNodeAttribute();
 
-  if (lNodeAttribute && lNodeAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
+  if (lNodeAttribute)
     {
-      FbxMesh* mesh;
-      unsigned int lClusterCount = 0;
-      unsigned int lSkinCount = 0;
-      unsigned int lVertexCount;
-      unsigned int i;
-      const char *name;
-
-      std::map<tmp_vertex, int> vertexMap;
-      std::vector<tmp_vertex> vertexArray;
-
-      mesh = node->GetMesh ();
-      lVertexCount = mesh->GetControlPointsCount();
-
-      name = node->GetName ();
-
-      if (!strncmp (name, "Bn_", 3))
-        return;
-
-      if (!lVertexCount)
-        return;
-
-      lSkinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
-
-      for (i = 0; i < lSkinCount; i++)
-        lClusterCount += ((FbxSkin *)(mesh->GetDeformer(i, FbxDeformer::eSkin)))->GetClusterCount();
-
-      output.meshes.push_back (fbx_mesh ());
-      fbx_mesh &newMesh = output.meshes.back ();
-
-      if (!strncasecmp (name, "LOD_", 4))
+      switch (lNodeAttribute->GetAttributeType())
         {
-          char *endptr;
-          newMesh.lod = strtod (name + 4, &endptr);
+        case FbxNodeAttribute::eMesh:
 
-          if (*endptr)
-            newMesh.lod = HUGE_VAL;
-        }
-      else
-        newMesh.lod = HUGE_VAL;
-
-        {
-          int lMaterialIndex;
-          int lTextureIndex;
-          FbxProperty lProperty;
-          int lNbTex;
-          FbxSurfaceMaterial *lMaterial = NULL;
-          int lNbMat = node->GetSrcObjectCount(FbxSurfaceMaterial::ClassId);
-
-          for (lMaterialIndex = 0; lMaterialIndex < lNbMat; lMaterialIndex++)
             {
-              lMaterial = FbxCast <FbxSurfaceMaterial>(node->GetSrcObject(FbxSurfaceMaterial::ClassId, lMaterialIndex));
+              FbxMesh* mesh;
+              unsigned int lClusterCount = 0;
+              unsigned int lSkinCount = 0;
+              unsigned int lVertexCount;
+              unsigned int i;
+              const char *name;
 
-              if(!lMaterial)
-                continue;
+              std::map<tmp_vertex, int> vertexMap;
+              std::vector<tmp_vertex> vertexArray;
 
-              lProperty = lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse);
+              mesh = node->GetMesh ();
+              lVertexCount = mesh->GetControlPointsCount();
 
-              if(!lProperty.IsValid())
-                continue;
+              name = node->GetName ();
 
-              lNbTex = lProperty.GetSrcObjectCount(FbxTexture::ClassId);
+              if (!strncmp (name, "Bn_", 3))
+                return;
 
-              for (lTextureIndex = 0; lTextureIndex < lNbTex; lTextureIndex++)
+              FbxProperty prop = node->FindProperty("UDP3DSMAX", false);
+
+              if(prop.IsValid())
+                ExtractUserProperties (output, prop.Get<FbxString>());
+
+              if (!lVertexCount)
+                return;
+
+              lSkinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
+
+              for (i = 0; i < lSkinCount; i++)
+                lClusterCount += ((FbxSkin *)(mesh->GetDeformer(i, FbxDeformer::eSkin)))->GetClusterCount();
+
+              output.meshes.push_back (fbx_mesh ());
+              fbx_mesh &newMesh = output.meshes.back ();
+
+              if (!strncasecmp (name, "LOD_", 4))
                 {
-                  FbxFileTexture *lFileTexture;
+                  char *endptr;
+                  newMesh.lod = strtod (name + 4, &endptr);
 
-                  if (!(lFileTexture = FbxCast<FbxFileTexture>(lProperty.GetSrcObject(FbxTexture::ClassId, lTextureIndex))))
-                    continue;
-
-                  newMesh.diffuseTexture = (const char *) lFileTexture->GetRelativeFileName ();
+                  if (*endptr)
+                    newMesh.lod = HUGE_VAL;
                 }
-            }
-        }
-
-      for (i = 0; i < 16; ++i)
-        newMesh.matrix.v[i] = lGlobalPosition.Get (i / 4, i % 4);
-
-      FbxStringList lUVNames;
-      const char * lUVName;
-
-      mesh->GetUVSetNames(lUVNames);
-
-      if (lUVNames.GetCount())
-        lUVName = lUVNames[0];
-      else
-        lUVName = 0;
-
-      for (i = 0; i < (unsigned int) mesh->GetPolygonCount(); i++)
-        {
-          int j, polygonSize;
-          int *indices;
-
-          polygonSize = mesh->GetPolygonSize(i);
-
-          indices = new int[polygonSize];
-
-          for (j = 0; j < polygonSize; j++)
-            {
-              tmp_vertex newVertex;
-
-              FbxVector2 uv;
-
-              newVertex.controlPoint = mesh->GetPolygonVertex(i, j);
-
-              mesh->GetPolygonVertexUV (i, j, lUVName, uv);
-
-              newVertex.u = uv[0];
-              newVertex.v = uv[1];
-
-              auto oldVertex = vertexMap.find (newVertex);
-
-              if (oldVertex != vertexMap.end ())
-                indices[j] = oldVertex->second;
               else
+                newMesh.lod = HUGE_VAL;
+
                 {
-                  indices[j] = vertexArray.size ();
+                  int lMaterialIndex;
+                  int lTextureIndex;
+                  FbxProperty lProperty;
+                  int lNbTex;
+                  FbxSurfaceMaterial *lMaterial = NULL;
+                  int lNbMat = node->GetSrcObjectCount(FbxSurfaceMaterial::ClassId);
 
-                  vertexArray.push_back (newVertex);
-                  vertexMap[newVertex] = indices[j];
+                  for (lMaterialIndex = 0; lMaterialIndex < lNbMat; lMaterialIndex++)
+                    {
+                      lMaterial = FbxCast <FbxSurfaceMaterial>(node->GetSrcObject(FbxSurfaceMaterial::ClassId, lMaterialIndex));
+
+                      if(!lMaterial)
+                        continue;
+
+                      lProperty = lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse);
+
+                      if(!lProperty.IsValid())
+                        continue;
+
+                      lNbTex = lProperty.GetSrcObjectCount(FbxTexture::ClassId);
+
+                      for (lTextureIndex = 0; lTextureIndex < lNbTex; lTextureIndex++)
+                        {
+                          FbxFileTexture *lFileTexture;
+
+                          if (!(lFileTexture = FbxCast<FbxFileTexture>(lProperty.GetSrcObject(FbxTexture::ClassId, lTextureIndex))))
+                            continue;
+
+                          newMesh.diffuseTexture = (const char *) lFileTexture->GetRelativeFileName ();
+                        }
+                    }
                 }
+
+              for (i = 0; i < 16; ++i)
+                newMesh.matrix.v[i] = lGlobalPosition.Get (i / 4, i % 4);
+
+              FbxStringList lUVNames;
+              const char * lUVName;
+
+              mesh->GetUVSetNames(lUVNames);
+
+              if (lUVNames.GetCount())
+                lUVName = lUVNames[0];
+              else
+                lUVName = 0;
+
+              for (i = 0; i < (unsigned int) mesh->GetPolygonCount(); i++)
+                {
+                  int j, polygonSize;
+                  int *indices;
+
+                  polygonSize = mesh->GetPolygonSize(i);
+
+                  indices = new int[polygonSize];
+
+                  for (j = 0; j < polygonSize; j++)
+                    {
+                      tmp_vertex newVertex;
+
+                      FbxVector2 uv;
+
+                      newVertex.controlPoint = mesh->GetPolygonVertex(i, j);
+
+                      mesh->GetPolygonVertexUV (i, j, lUVName, uv);
+
+                      newVertex.u = uv[0];
+                      newVertex.v = uv[1];
+
+                      auto oldVertex = vertexMap.find (newVertex);
+
+                      if (oldVertex != vertexMap.end ())
+                        indices[j] = oldVertex->second;
+                      else
+                        {
+                          indices[j] = vertexArray.size ();
+
+                          vertexArray.push_back (newVertex);
+                          vertexMap[newVertex] = indices[j];
+                        }
+                    }
+
+                  for (j = 2; j < polygonSize; ++j)
+                    {
+                      newMesh.indices.push_back (indices[0]);
+                      newMesh.indices.push_back (indices[j - 1]);
+                      newMesh.indices.push_back (indices[j]);
+                    }
+
+                  delete [] indices;
+                }
+
+              for (i = 0; i < vertexArray.size (); ++i)
+                {
+                  tmp_vertex v;
+                  double *xyz;
+
+                  v = vertexArray[i];
+
+                  xyz = (double *) mesh->GetControlPoints()[v.controlPoint];
+
+                  newMesh.xyz.push_back (xyz[0]);
+                  newMesh.xyz.push_back (xyz[1]);
+                  newMesh.xyz.push_back (xyz[2]);
+                  newMesh.uv.push_back (v.u);
+                  newMesh.uv.push_back (v.v);
+                }
+
+              if (lClusterCount)
+                ConvertInitialClusterDeformationToIntermediate (newMesh, lGlobalPosition, mesh, vertexArray);
             }
 
-          for (j = 2; j < polygonSize; ++j)
-            {
-              newMesh.indices.push_back (indices[0]);
-              newMesh.indices.push_back (indices[j - 1]);
-              newMesh.indices.push_back (indices[j]);
-            }
+          break;
 
-          delete [] indices;
+        default:
+
+          break;
         }
-
-      for (i = 0; i < vertexArray.size (); ++i)
-        {
-          tmp_vertex v;
-          double *xyz;
-
-          v = vertexArray[i];
-
-          xyz = (double *) mesh->GetControlPoints()[v.controlPoint];
-
-          newMesh.xyz.push_back (xyz[0]);
-          newMesh.xyz.push_back (xyz[1]);
-          newMesh.xyz.push_back (xyz[2]);
-          newMesh.uv.push_back (v.u);
-          newMesh.uv.push_back (v.v);
-        }
-
-      if (lClusterCount)
-        ConvertInitialClusterDeformationToIntermediate (newMesh, lGlobalPosition, mesh, vertexArray);
     }
 
   int i, lCount = node->GetChildCount();
@@ -850,7 +929,7 @@ void
 ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeName)
 {
   FbxTakeInfo* lCurrentTakeInfo;
-  FbxTime period, start, stop, currentTime;
+  FbxTime period, currentTime;
 
   FbxAnimStack *lCurrentAnimationStack;
 
@@ -870,27 +949,62 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
   if (!lCurrentTakeInfo)
     return;
 
-  output.takes.push_back (fbx_take ());
-  fbx_take &take = output.takes.back ();
+  period.SetMilliSeconds (1000. / 60.);
 
-  take.name = (const char *) *takeName;
-  take.interval = 1000. / 60.;
-
-  period.SetMilliSeconds (take.interval);
-
-  start = lCurrentTakeInfo->mLocalTimeSpan.GetStart();
-  stop = lCurrentTakeInfo->mLocalTimeSpan.GetStop();
-
-  for (currentTime = start; currentTime <= stop; currentTime += period)
+  if (output.takeRanges.empty ())
     {
-      FbxAMatrix lDummyGlobalPosition;
+      FbxTime start, stop;
+      output.takes.push_back (fbx_take ());
+      fbx_take &take = output.takes.back ();
 
-      int i, lCount = scene->GetRootNode()->GetChildCount();
+      take.name = (const char *) *takeName;
+      take.interval = 1000. / 60.;
 
-      take.frames.push_back (fbx_frame ());
-      fbx_frame &frame = take.frames.back ();
+      start = lCurrentTakeInfo->mLocalTimeSpan.GetStart();
+      stop = lCurrentTakeInfo->mLocalTimeSpan.GetStop();
 
-      for (i = 0; i < lCount; i++)
-        ConvertFrameToIntermediate (frame, scene->GetRootNode()->GetChild(i), currentTime, lDummyGlobalPosition);
+      for (currentTime = start; currentTime <= stop; currentTime += period)
+        {
+          FbxAMatrix lDummyGlobalPosition;
+
+          int i, lCount = scene->GetRootNode()->GetChildCount();
+
+          take.frames.push_back (fbx_frame ());
+          fbx_frame &frame = take.frames.back ();
+
+          for (i = 0; i < lCount; i++)
+            ConvertFrameToIntermediate (frame, scene->GetRootNode()->GetChild(i), currentTime, lDummyGlobalPosition);
+        }
+    }
+  else
+    {
+      for (auto &range : output.takeRanges)
+        {
+          unsigned int i;
+
+          output.takes.push_back (fbx_take ());
+          fbx_take &take = output.takes.back ();
+
+          take.name = range.name;
+          take.interval = 1000. / 60.;
+
+          currentTime = lCurrentTakeInfo->mLocalTimeSpan.GetStart();
+
+          for (i = 0; i < range.begin; ++i)
+            currentTime += period;
+
+          for (; i < range.end; ++i, currentTime += period)
+            {
+              FbxAMatrix lDummyGlobalPosition;
+
+              int i, lCount = scene->GetRootNode()->GetChildCount();
+
+              take.frames.push_back (fbx_frame ());
+              fbx_frame &frame = take.frames.back ();
+
+              for (i = 0; i < lCount; i++)
+                ConvertFrameToIntermediate (frame, scene->GetRootNode()->GetChild(i), currentTime, lDummyGlobalPosition);
+            }
+        }
     }
 }

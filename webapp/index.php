@@ -23,6 +23,18 @@ require_once('lib/git.php');
 require_once('lib/html.php');
 require_once('lib/path.php');
 
+if ($method == 'GET' && isset($_SERVER['HTTP_IF_MODIFIED_SINCE']))
+{
+  $if_modified_since = strtotime(preg_replace('/;.*$/', '', $_SERVER['HTTP_IF_MODIFIED_SINCE']));
+
+  if (filemtime($path) <= $if_modified_since)
+  {
+    header('HTTP/1.1 304 Not Modified');
+
+    exit;
+  }
+}
+
 $email_addresses = array('mortehu' => 'Morten Hustveit <morten.hustveit@gmail.com>',
                          'flemm' => 'Tollef Roe Steen <tollef.steen@hihm.no>');
 
@@ -455,18 +467,6 @@ if (!file_exists($path))
   echo "404 Not Found\n";
 
   exit;
-}
-
-if ($method == 'GET' && isset($_SERVER['HTTP_IF_MODIFIED_SINCE']))
-{
-  $if_modified_since = strtotime(preg_replace('/;.*$/', '', $_SERVER['HTTP_IF_MODIFIED_SINCE']));
-
-  if (filemtime($path) <= $if_modified_since)
-  {
-    header('HTTP/1.1 304 Not Modified');
-
-    exit;
-  }
 }
 
 $source_data = file_get_contents($path);

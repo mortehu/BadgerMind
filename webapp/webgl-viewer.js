@@ -1,48 +1,92 @@
 var gl;
-var distance = 20.0, up = 5.0;
+var distance = 1.0, up = 0.3;
 var DRAW_currentTexture;
 var DRAW_pMatrix = mat4.create ();
 var DRAW_mvMatrix = mat4.create ();
 var DRAW_modelMatrix = mat4.create ();
 
+var takes = [];
+var bindPose = [];
 var minBounds = [ 0, 0, 0 ];
 var maxBounds = [ 0, 0, 0 ];
 var center = [ 0, 0, 0 ];
+
+var currentAnim = 0;
 
 var vertexPositionBuffer;
 var vertexIndexBuffer;
 
 var lastTime = 0;
 
+var staticProgram;
+var boneProgram;
+
 function DRAW_SetupShaders ()
 {
-  var fragmentShader = DRAW_GetShaderFromElement ("shader-fs");
-  var vertexShader = DRAW_GetShaderFromElement ("shader-vs");
+  var fragmentShader, vertexShader;
 
-  shaderProgram = gl.createProgram ();
-  gl.attachShader (shaderProgram, vertexShader);
-  gl.attachShader (shaderProgram, fragmentShader);
-  gl.linkProgram (shaderProgram);
+  fragmentShader = DRAW_GetShaderFromElement ("shader-fs");
+  vertexShader = DRAW_GetShaderFromElement ("shader-vs");
+  boneVSShader = DRAW_GetShaderFromElement ("bone-vs");
 
-  if (!gl.getProgramParameter (shaderProgram, gl.LINK_STATUS))
+  staticProgram = gl.createProgram ();
+  gl.attachShader (staticProgram, vertexShader);
+  gl.attachShader (staticProgram, fragmentShader);
+  gl.linkProgram (staticProgram);
+
+  if (!gl.getProgramParameter (staticProgram, gl.LINK_STATUS))
     {
-      alert ("Could not initialise shaders");
+      console.log (gl.getProgramInfoLog(staticProgram));
+      alert ("Could not initialise static shader: " + gl.getProgramInfoLog(staticProgram));
 
-      return;
+      return false;
     }
 
-  gl.useProgram (shaderProgram);
+  gl.useProgram (staticProgram);
 
-  shaderProgram.vertexPositionAttribute = gl.getAttribLocation (shaderProgram, "aVertexPosition");
-  gl.enableVertexAttribArray (shaderProgram.vertexPositionAttribute);
+  staticProgram.vertexPositionAttribute = gl.getAttribLocation (staticProgram, "aVertexPosition");
+  gl.enableVertexAttribArray (staticProgram.vertexPositionAttribute);
 
-  shaderProgram.textureCoordAttribute = gl.getAttribLocation (shaderProgram, "aTextureCoord");
-  gl.enableVertexAttribArray (shaderProgram.textureCoordAttribute);
+  staticProgram.textureCoordAttribute = gl.getAttribLocation (staticProgram, "aTextureCoord");
+  gl.enableVertexAttribArray (staticProgram.textureCoordAttribute);
 
-  shaderProgram.pMatrixUniform = gl.getUniformLocation (shaderProgram, "uPMatrix");
-  shaderProgram.mvMatrixUniform = gl.getUniformLocation (shaderProgram, "uMVMatrix");
+  staticProgram.pMatrixUniform = gl.getUniformLocation (staticProgram, "uPMatrix");
+  staticProgram.mvMatrixUniform = gl.getUniformLocation (staticProgram, "uMVMatrix");
 
-  gl.uniform1i (gl.getUniformLocation (shaderProgram, "uSampler"), 0);
+  gl.uniform1i (gl.getUniformLocation (staticProgram, "uSampler"), 0);
+
+  boneProgram = gl.createProgram ();
+  gl.attachShader (boneProgram, boneVSShader);
+  gl.attachShader (boneProgram, fragmentShader);
+  gl.linkProgram (boneProgram);
+
+  if (!gl.getProgramParameter (boneProgram, gl.LINK_STATUS))
+    {
+      console.log (gl.getProgramInfoLog(boneProgram));
+      alert ("Could not initialise bone shader: " + gl.getProgramInfoLog(boneProgram));
+
+      return false;
+    }
+
+  gl.useProgram (boneProgram);
+
+  boneProgram.vertexPositionAttribute = gl.getAttribLocation (boneProgram, "aVertexPosition");
+  boneProgram.textureCoordAttribute = gl.getAttribLocation (boneProgram, "aTextureCoord");
+  boneProgram.boneWeightAttribute = gl.getAttribLocation (boneProgram, "aBoneWeights");
+  boneProgram.boneIndexAttribute = gl.getAttribLocation (boneProgram, "aBoneIndices");
+
+  gl.enableVertexAttribArray (boneProgram.vertexPositionAttribute);
+  gl.enableVertexAttribArray (boneProgram.textureCoordAttribute);
+  gl.enableVertexAttribArray (boneProgram.boneWeightAttribute);
+  gl.enableVertexAttribArray (boneProgram.boneIndexAttribute);
+
+  boneProgram.bonesUniform = gl.getUniformLocation (boneProgram, "uBones");
+  boneProgram.pMatrixUniform = gl.getUniformLocation (boneProgram, "uPMatrix");
+  boneProgram.mvMatrixUniform = gl.getUniformLocation (boneProgram, "uMVMatrix");
+
+  gl.uniform1i (gl.getUniformLocation (boneProgram, "uSampler"), 0);
+
+  return true;
 }
 
 function DRAW_GetShaderFromElement (id)
@@ -108,27 +152,83 @@ function DRAW_HandleLoadedTexture (texture)
 function DRAW_Flush ()
 {
   var model = mat4.create ();
+  var shaderProgram;
 
   mat4.identity (DRAW_pMatrix);
   mat4.perspective (45, gl.viewportWidth / gl.viewportHeight, 0.1, 10000.0, DRAW_pMatrix);
 
   mat4.identity (DRAW_mvMatrix);
   mat4.rotate (DRAW_mvMatrix, Math.atan (up / distance), [1, 0, 0]);
-  mat4.rotate (DRAW_mvMatrix, elapsed * 0.1 + Math.PI * 0.5, [0, 1, 0]);
-  mat4.translate (DRAW_mvMatrix, [distance * Math.cos(elapsed * 0.1), -up, distance * Math.sin(elapsed * 0.1)]);
+  mat4.rotate (DRAW_mvMatrix, elapsed * 0.5 + Math.PI * 0.5, [0, 1, 0]);
+  mat4.translate (DRAW_mvMatrix, [distance * Math.cos(elapsed * 0.5), -up, distance * Math.sin(elapsed * 0.5)]);
   mat4.translate (DRAW_mvMatrix, center);
 
   mat4.multiply (DRAW_mvMatrix, DRAW_modelMatrix, model); // Sets modelViewPersp to modelView * persp
+
+  if (bindPose.length)
+  {
+    var i, pose = [];
+    var poseArray;
+    var frame, frameCount, offset;
+
+    shaderProgram = boneProgram;
+    gl.useProgram (shaderProgram);
+
+    gl.bindBuffer (gl.ARRAY_BUFFER, vertexPositionBuffer);
+    gl.vertexAttribPointer (shaderProgram.vertexPositionAttribute, 3, gl.FLOAT, false, 13 * 4, 0);
+    gl.vertexAttribPointer (shaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 13 * 4, 3 * 4);
+    gl.vertexAttribPointer (shaderProgram.boneWeightAttribute, 4, gl.FLOAT, false, 13 * 4, 5 * 4);
+    gl.vertexAttribPointer (shaderProgram.boneIndexAttribute, 4, gl.FLOAT, false, 13 * 4, 9 * 4);
+
+    frame = Math.floor (elapsed * 60.0);
+
+    frameCount = takes[currentAnim].length / bindPose.length;
+    frame %= frameCount;
+    offset = frame * bindPose.length;
+
+    for (i = 0; i < bindPose.length; ++i)
+      {
+        var relative;
+
+        relative = mat4.create ();
+        mat4.multiply (takes[currentAnim][offset + i], bindPose[i], relative);
+
+        pose.push (relative[0]);
+        pose.push (relative[1]);
+        pose.push (relative[2]);
+        pose.push (relative[12]);
+
+        pose.push (relative[4]);
+        pose.push (relative[5]);
+        pose.push (relative[6]);
+        pose.push (relative[13]);
+
+        pose.push (relative[8]);
+        pose.push (relative[9]);
+        pose.push (relative[10]);
+        pose.push (relative[14]);
+      }
+
+    poseArray = new Float32Array (pose);
+
+    gl.uniform4fv (shaderProgram.bonesUniform, poseArray);
+  }
+  else
+  {
+    shaderProgram = staticProgram;
+    gl.useProgram (shaderProgram);
+
+    gl.bindBuffer (gl.ARRAY_BUFFER, vertexPositionBuffer);
+    gl.vertexAttribPointer (shaderProgram.vertexPositionAttribute, 3, gl.FLOAT, false, 5 * 4, 0);
+    gl.vertexAttribPointer (shaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 5 * 4, 3 * 4);
+  }
+
 
   gl.uniformMatrix4fv (shaderProgram.pMatrixUniform, false, DRAW_pMatrix);
   gl.uniformMatrix4fv (shaderProgram.mvMatrixUniform, false, model);
 
   gl.activeTexture (gl.TEXTURE0);
   gl.bindTexture (gl.TEXTURE_2D, DRAW_currentTexture);
-
-  gl.bindBuffer (gl.ARRAY_BUFFER, vertexPositionBuffer);
-  gl.vertexAttribPointer (shaderProgram.vertexPositionAttribute, 3, gl.FLOAT, false, 5 * 4, 0);
-  gl.vertexAttribPointer (shaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 5 * 4, 3 * 4);
 
   gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, vertexIndexBuffer);
 
@@ -138,25 +238,37 @@ function DRAW_Flush ()
 
 function DRAW_LoadModel (data)
 {
-  for (var i = 0; i < data.length; ++i)
-    {
-      if (data[i]["texture-URI"])
-        DRAW_currentTexture = DRAW_LoadTexture (data[i]["texture-URI"]);
+  var meshes, inputTakes;
 
-      DRAW_modelMatrix.set(data[i]["matrix"]);
+  meshes = data["meshes"];
+  inputTakes = data["takes"];
+
+  for (var i = 0; i < meshes.length; ++i)
+    {
+      var inputBindPose;
+
+      if (meshes[i]["texture-URI"])
+        DRAW_currentTexture = DRAW_LoadTexture (meshes[i]["texture-URI"]);
+
+      DRAW_modelMatrix.set(meshes[i]["matrix"]);
 
       vertexPositionBuffer = gl.createBuffer ();
       gl.bindBuffer (gl.ARRAY_BUFFER, vertexPositionBuffer);
-      gl.bufferData (gl.ARRAY_BUFFER, new Float32Array (data[i].vertices), gl.STATIC_DRAW);
+      gl.bufferData (gl.ARRAY_BUFFER, new Float32Array (meshes[i].vertices), gl.STATIC_DRAW);
 
       vertexIndexBuffer = gl.createBuffer ();
       gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, vertexIndexBuffer);
-      gl.bufferData (gl.ELEMENT_ARRAY_BUFFER, new Int16Array (data[i].triangles), gl.STATIC_DRAW);
+      gl.bufferData (gl.ELEMENT_ARRAY_BUFFER, new Int16Array (meshes[i].triangles), gl.STATIC_DRAW);
 
-      indexCount = data[i].triangles.length;
+      indexCount = meshes[i].triangles.length;
 
-      minBounds = data[i]["min-bounds"];
-      maxBounds = data[i]["max-bounds"];
+      inputBindPose = new Float32Array (meshes[i]["bind-pose"]);
+
+      for (var j = 0; j + 15 < inputBindPose.length; j += 16)
+        bindPose.push (inputBindPose.subarray (j, j + 16));
+
+      minBounds = meshes[i]["min-bounds"];
+      maxBounds = meshes[i]["max-bounds"];
 
       mat4.multiplyVec3 (DRAW_modelMatrix, minBounds);
       mat4.multiplyVec3 (DRAW_modelMatrix, maxBounds);
@@ -165,7 +277,33 @@ function DRAW_LoadModel (data)
                  -(minBounds[1] + maxBounds[1]) * 0.5,
                  -(minBounds[2] + maxBounds[2]) * 0.5 ];
 
-      break;
+      break; /* We support only one mesh for now */
+    }
+
+  if (inputTakes.length > 0)
+    {
+      for (var i = 0; i < inputTakes.length; ++i)
+        {
+          var option, take;
+          var inputFrames;
+
+          option = document.createElement("option");
+          option.value = i;
+          option.text = inputTakes[i].name;
+
+          document.getElementById('take').appendChild(option);
+
+          take = [];
+
+          inputFrames = new Float32Array (inputTakes[i].frames);
+
+          for (var k = 0; k + 15 < inputTakes[i].frames.length; k += 16)
+            take.push(inputFrames.subarray(k, k + 16));
+
+          takes.push(take);
+        }
+
+      document.getElementById('take').onchange = function (event) { currentAnim = document.getElementById('take').value; };
     }
 }
 
@@ -188,13 +326,16 @@ function SYS_Init ()
 
   gl.viewport (0, 0, gl.viewportWidth, gl.viewportHeight);
 
-  DRAW_SetupShaders ();
+  if (!DRAW_SetupShaders ())
+    return false;
 
   gl.clearColor (0.1, 0.1, 0.1, 1.0);
   gl.enable (gl.DEPTH_TEST);
 
   gl.enable (gl.BLEND);
   gl.blendFunc (gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
+  return true;
 }
 
 /***********************************************************************/
@@ -206,7 +347,8 @@ function VIEWER_Init (modelURI)
 {
   var httpreq = new XMLHttpRequest();
 
-  SYS_Init ();
+  if (!SYS_Init ())
+    return;
 
   httpreq.open('GET', modelURI, true);
 
@@ -215,7 +357,7 @@ function VIEWER_Init (modelURI)
     {
       if (httpreq.readyState == 4)
         {
-          DRAW_LoadModel (eval(httpreq.responseText));
+          DRAW_LoadModel (eval('(' + httpreq.responseText + ')'));
 
           VIEWER_Update ();
         }
@@ -229,7 +371,8 @@ function VIEWER_Update ()
   var timeNow, deltaTime;
 
   timeNow = new Date ().getTime ();
-  deltaTime = timeNow - lastTime;
+  deltaTime = (timeNow - lastTime) * 0.001;
+  lastTime = timeNow;
 
   if (deltaTime < 0 || deltaTime > 0.05)
     deltaTime = 0.05;

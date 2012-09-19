@@ -13,15 +13,16 @@ void
 FbxConvertExportJSON (fbx_model &model)
 {
   bool firstMesh = true;
+  bool firstTake = true;
 
-  putchar ('[');
+  printf ("{\"meshes\":[");
 
   for (auto mesh : model.meshes)
     {
       if (!firstMesh)
         putchar (',');
 
-      printf ("{\"type\":\"mesh\",");
+      putchar ('{');
 
       if (mesh.diffuseTexture.length ())
         printf ("\"texture-URI\":\"%s\",\n", mesh.diffuseTexture.c_str ());
@@ -57,12 +58,42 @@ FbxConvertExportJSON (fbx_model &model)
           if (i)
             putchar (',');
 
-          printf ("%.7g, %.7g, %.7g, %.7g, %.7g",
-                  mesh.xyz[i * 3 + 0],
-                  mesh.xyz[i * 3 + 1],
-                  mesh.xyz[i * 3 + 2],
-                  mesh.uv[i * 2 + 0],
-                  mesh.uv[i * 2 + 1]);
+          if (mesh.bindPose.empty ())
+            {
+              printf ("%.7g, %.7g, %.7g, %.7g, %.7g",
+                      mesh.xyz[i * 3 + 0],
+                      mesh.xyz[i * 3 + 1],
+                      mesh.xyz[i * 3 + 2],
+                      mesh.uv[i * 2 + 0],
+                      mesh.uv[i * 2 + 1]);
+            }
+          else
+            {
+              printf ("%.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g",
+                      mesh.xyz[i * 3 + 0],
+                      mesh.xyz[i * 3 + 1],
+                      mesh.xyz[i * 3 + 2],
+                      mesh.uv[i * 2 + 0],
+                      mesh.uv[i * 2 + 1],
+                      mesh.weights[i * 4 + 0] / 255.0,
+                      mesh.weights[i * 4 + 1] / 255.0,
+                      mesh.weights[i * 4 + 2] / 255.0,
+                      mesh.weights[i * 4 + 3] / 255.0,
+                      (double) mesh.bones[i * 4 + 0],
+                      (double) mesh.bones[i * 4 + 1],
+                      (double) mesh.bones[i * 4 + 2],
+                      (double) mesh.bones[i * 4 + 3]);
+            }
+        }
+
+      printf ("], \"bind-pose\":[");
+
+      for (size_t i = 0; i < mesh.bindPose.size (); ++i)
+        {
+          if (i)
+            putchar (',');
+
+          printf ("%.7g", mesh.bindPose[i]);
         }
 
       printf ("], \"min-bounds\":[");
@@ -86,5 +117,34 @@ FbxConvertExportJSON (fbx_model &model)
       firstMesh = false;
     }
 
-  putchar (']');
+  printf ("],\"takes\":[");
+
+  for (auto take : model.takes)
+    {
+      bool firstV = true;
+
+      if (!firstTake)
+        putchar (',');
+
+      printf ("{\"name\":\"%s\",\"frames\":[", take.name.c_str());
+
+      for (auto frame : take.frames)
+        {
+          for (float v : frame.pose)
+            {
+              if (!firstV)
+                putchar(',');
+
+              printf ("%.7g", v);
+
+              firstV = false;
+            }
+        }
+
+      printf ("]}");
+
+      firstTake = false;
+    }
+
+  printf ("]}");
 }

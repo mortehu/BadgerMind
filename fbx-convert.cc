@@ -598,8 +598,8 @@ ExtractUserProperties (fbx_model &output, const char *properties)
               line[prefix] = 0;
 
               ftr.name = line;
-              ftr.begin = start;
-              ftr.end = end;
+              ftr.begin = start * 2;
+              ftr.end = end * 2;
 
               output.takeRanges.push_back (ftr);
             }
@@ -833,7 +833,7 @@ static void ExportClusterDeformationAtTime(fbx_frame &output,
 
   lClusterMode = skin->GetCluster(0)->GetLinkMode();
 
-  int i, j;
+  int i, j, k;
   int lClusterCount=0;
   int lVertexCount = pMesh->GetControlPointsCount();
   int lSkinCount=pMesh->GetDeformerCount(FbxDeformer::eSkin);
@@ -877,6 +877,7 @@ static void ExportClusterDeformationAtTime(fbx_frame &output,
 
           lClusterRelativeCurrentPositionInverse = lReferenceGlobalCurrentPosition.Inverse() * lClusterGlobalCurrentPosition;
 
+          if (0 != strcmp (FbxConvert_format, "json"))
             {
               FbxQuaternion quat;
               FbxVector4 transl;
@@ -891,6 +892,11 @@ static void ExportClusterDeformationAtTime(fbx_frame &output,
               output.pose.push_back (transl[0]);
               output.pose.push_back (transl[1]);
               output.pose.push_back (transl[2]);
+            }
+          else
+            {
+              for (k = 0; k < 16; ++k)
+                output.pose.push_back (lClusterRelativeCurrentPositionInverse.Get (k / 4, k % 4));
             }
         }
     }
@@ -953,6 +959,8 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
 
   if (output.takeRanges.empty ())
     {
+      FbxAMatrix lDummyGlobalPosition;
+
       FbxTime start, stop;
       output.takes.push_back (fbx_take ());
       fbx_take &take = output.takes.back ();
@@ -965,8 +973,6 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
 
       for (currentTime = start; currentTime <= stop; currentTime += period)
         {
-          FbxAMatrix lDummyGlobalPosition;
-
           int i, lCount = scene->GetRootNode()->GetChildCount();
 
           take.frames.push_back (fbx_frame ());
@@ -978,6 +984,8 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
     }
   else
     {
+      FbxAMatrix lDummyGlobalPosition;
+
       for (auto &range : output.takeRanges)
         {
           unsigned int i;
@@ -988,22 +996,17 @@ ConvertTakeToIntermediate (fbx_model &output, FbxScene *scene, FbxString *takeNa
           take.name = range.name;
           take.interval = 1000. / 60.;
 
-          currentTime = lCurrentTakeInfo->mLocalTimeSpan.GetStart();
-
-          for (i = 0; i < range.begin; ++i)
-            currentTime += period;
-
-          for (; i < range.end; ++i, currentTime += period)
+          for (i = range.begin; i < range.end; ++i, currentTime += period)
             {
-              FbxAMatrix lDummyGlobalPosition;
+              int j, lCount = scene->GetRootNode()->GetChildCount();
 
-              int i, lCount = scene->GetRootNode()->GetChildCount();
+              currentTime.SetFrame (i, FbxTime::eFrames60);
 
               take.frames.push_back (fbx_frame ());
               fbx_frame &frame = take.frames.back ();
 
-              for (i = 0; i < lCount; i++)
-                ConvertFrameToIntermediate (frame, scene->GetRootNode()->GetChild(i), currentTime, lDummyGlobalPosition);
+              for (j = 0; j < lCount; j++)
+                ConvertFrameToIntermediate (frame, scene->GetRootNode()->GetChild(j), currentTime, lDummyGlobalPosition);
             }
         }
     }
